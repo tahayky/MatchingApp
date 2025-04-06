@@ -406,39 +406,17 @@ router.get('/discover', protect, async (req, res) => {
       
     console.log(`[DEBUG] Bulunan profil sayısı: ${profiles.length}`);
     
-    // Check if we need to include demo profiles
+    // Profillerin sayısını logla
+    console.log(`[DEBUG] Bulunan profil sayısı: ${profiles.length}`);
+    
+    // Demo profilleri devre dışı bırakıldı - artık sadece gerçek profiller gösteriliyor
     if (profiles.length === 0) {
-      console.log('[DEBUG] Gerçek profil bulunamadı, demo profiller ekleniyor');
+      console.log('[DEBUG] Gerçek profil bulunamadı, boş liste döndürülüyor');
       
-      // Generate demo profiles
-      const demoProfiles = [];
-      for (let i = 1; i <= 3; i++) {
-        demoProfiles.push({
-          _id: `sample-${i}`,
-          user: {
-            _id: `user-${i}`,
-            name: `Demo User ${i}`,
-            dateOfBirth: new Date(1990, 0, 1).toISOString(),
-            gender: i % 2 === 0 ? 'male' : 'female'
-          },
-          photos: [{ 
-            _id: `photo-sample-${i}`,
-            url: `https://i.pravatar.cc/300?img=${i+20}`,
-            isMain: true
-          }],
-          bio: `Demo profile for testing (#${i}).`,
-          location: { city: 'Demo City', country: 'Demo Country' },
-          interests: ['demo', 'testing'],
-          occupation: 'Demo Job',
-          education: 'Demo University'
-        });
-      }
-      
-      // Log and respond
-      console.log(`[DEBUG] ${demoProfiles.length} demo profil ekleniyor`);
+      // Boş bir dizi döndür - demo profil yok
       res.json({
         success: true,
-        profiles: demoProfiles
+        profiles: []
       });
     } else {
       // Return real profiles

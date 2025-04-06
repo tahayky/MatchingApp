@@ -11,6 +11,7 @@ const { protect } = require('../middleware/auth');
 // @access  Private
 router.post('/action', protect, async (req, res) => {
   console.log(`--- SERVER HIT: POST /api/matches/action with body:`, req.body); // <--- ADD THIS LINE
+  
   try {
     const { targetUserId, action } = req.body;
     const currentUserId = req.user._id; // Mevcut kullanıcı ID'si
@@ -56,19 +57,36 @@ router.post('/action', protect, async (req, res) => {
       });
     }
 
-    // Hedef kullanıcının veritabanında var olup olmadığını kontrol et
-    const targetUserExists = await User.findById(targetUserId);
+    // ÖNEMLİ DEĞİŞİKLİK: Frontend profile ID gönderiyor, önce profili bul, sonra user'a eriş
+    console.log(`[DEBUG] Searching for profile with ID: ${targetUserId}`);
+    
+    // Önce Profile modelinde arama yap (frontend'den gelen ID bir profile ID'si)
+    const targetProfile = await Profile.findById(targetUserId);
+    if (!targetProfile) {
+      return res.status(404).json({
+        success: false,
+        message: 'Target profile not found'
+      });
+    }
+    
+    // Profil bulundu, şimdi bu profilin bağlı olduğu user'ı bul
+    const profileUserId = targetProfile.user;
+    console.log(`[DEBUG] Found profile, associated user ID: ${profileUserId}`);
+    
+    // Kontrol amaçlı user'ı da veritabanından kontrol et
+    const targetUserExists = await User.findById(profileUserId);
     if (!targetUserExists) {
       return res.status(404).json({
         success: false,
-        message: 'Target user not found'
+        message: 'Target user associated with the profile not found'
       });
     }
 
+    // ÖNEMLİ: Frontend'den gelen Profile ID'yi User ID'ye çevir
     // Bu kullanıcıdan hedefe yönelik mevcut bir eylem var mı diye bak
     let match = await Match.findOne({
       user: currentUserId,
-      targetUser: targetUserId
+      targetUser: profileUserId // Profile içindeki user ID'yi kullan!
     });
 
     let isNewAction = false;
@@ -82,28 +100,29 @@ router.post('/action', protect, async (req, res) => {
               match.matchedAt = null;
           }
           await match.save();
-          console.log(`[DEBUG] Updated existing action for user ${currentUserId} to target ${targetUserId} with action ${action}`);
+          console.log(`[DEBUG] Updated existing action for user ${currentUserId} to target user ${profileUserId} with action ${action}`);
       } else {
-          console.log(`[DEBUG] Action already exists for user ${currentUserId} to target ${targetUserId} with action ${action}. No change.`);
+          console.log(`[DEBUG] Action already exists for user ${currentUserId} to target user ${profileUserId} with action ${action}. No change.`);
       }
     } else {
-      // Yeni eylem oluştur
+      // Yeni eylem oluştur - Burada TARGET USER olarak profileUserId kullan!
       match = new Match({
         user: currentUserId,
-        targetUser: targetUserId,
+        targetUser: profileUserId, // Bu kritik değişiklik - profileUserId kullanılıyor!
         action
       });
       await match.save();
       isNewAction = true;
-      console.log(`[DEBUG] Created new action for user ${currentUserId} to target ${targetUserId} with action ${action}`);
+      console.log(`[DEBUG] Created new action for user ${currentUserId} to target user ${profileUserId} with action ${action}`);
     }
 
     let isMatch = false;
     // Eğer bu bir "like" eylemiyse, hedef kullanıcının da bu kullanıcıyı beğenip beğenmediğini kontrol et
     if (action === 'like') {
+      // Karşı kullanıcının actionları içinde mevcut kullanıcıyı ara
       const reverseMatch = await Match.findOne({
-        user: targetUserId,
-        targetUser: currentUserId,
+        user: profileUserId, // Karşı tarafın User ID'si
+        targetUser: currentUserId, // Mevcut kullanıcının ID'si
         action: 'like'
       });
 
@@ -124,7 +143,7 @@ router.post('/action', protect, async (req, res) => {
         reverseMatch.active = true; // Eşleşme olduğunda aktif et
         await reverseMatch.save();
 
-        console.log(`[DEBUG] Mutual match detected between ${currentUserId} and ${targetUserId}`);
+        console.log(`[DEBUG] Mutual match detected between user ${currentUserId} and user ${profileUserId}`);
       }
     }
 
