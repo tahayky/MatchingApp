@@ -45,6 +45,10 @@ interface SwipeableCardProps {
 }
 
 export function SwipeableCard({ profile, onSwipeLeft, onSwipeRight }: SwipeableCardProps) {
+  // Güvenlik kontrolü - profil objesi geçerli mi?
+  console.log(`SwipeableCard: Profil render ediliyor: ${profile.name}`);
+  console.log(`SwipeableCard: Profil resmi:`, profile.image);
+  
   const colorScheme = useColorScheme() ?? 'light';
   const translateX = useSharedValue(0);
   const rotation = useSharedValue(0);

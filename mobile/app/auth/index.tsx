@@ -19,7 +19,7 @@ export default function LoginScreen() {
     const checkApiConnection = async () => {
       try {
         setConnectionTesting(true);
-        const result = await testService.testConnection();
+        const result = await testService.testApiConnection();
         setApiStatus(result);
       } catch (error) {
         setApiStatus({

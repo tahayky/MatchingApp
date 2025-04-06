@@ -31,9 +31,10 @@ JWT_SECRET=your_jwt_secret_key
 ```bash
 cd mobile
 npm install
+npm install react-native-dotenv --save-dev
 ```
 
-`.env` dosyasını oluşturun (örnek `.env.example` dosyasından kopyalayabilirsiniz):
+`.env` dosyasını oluşturun (`.env.example` dosyasından kopyalayabilirsiniz):
 
 ```bash
 cp .env.example .env

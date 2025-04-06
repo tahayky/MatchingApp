@@ -17,14 +17,22 @@ interface CardDeckProps {
 export function CardDeck({ profiles, onSwipeLeft, onSwipeRight, onDeckEmpty }: CardDeckProps) {
   const [currentProfiles, setCurrentProfiles] = useState<ProfileData[]>([]);
   
-  // Initialize with profiles
+  // Initialize with profiles - debug eklenerek
   useEffect(() => {
-    setCurrentProfiles(profiles);
+    console.log(`CardDeck: Profiles prop değişti, yeni uzunluk: ${profiles.length}`);
+    if (profiles.length > 0) {
+      console.log(`CardDeck: İlk profil: ${profiles[0].name}, ID: ${profiles[0].id}`);
+      setCurrentProfiles(profiles);
+    }
   }, [profiles]);
 
-  // Check if deck is empty
+  // Check if deck is empty - fix edilmiş boş deste kontrolü
   useEffect(() => {
-    if (currentProfiles.length === 0 && profiles.length > 0) {
+    console.log(`CardDeck: currentProfiles uzunluğu: ${currentProfiles.length}`);
+    
+    // Sadece currentProfiles boşsa ve dışarıdan gelen profiles dolu değilse yeni profil iste
+    if (currentProfiles.length === 0 && profiles.length === 0) {
+      console.log('CardDeck: Gerçekten boş deste tespit edildi, yeni profil isteniyor');
       onDeckEmpty();
     }
   }, [currentProfiles, profiles, onDeckEmpty]);
@@ -37,10 +45,19 @@ export function CardDeck({ profiles, onSwipeLeft, onSwipeRight, onDeckEmpty }: C
   };
 
   const handleSwipeRight = (profile: ProfileData) => {
-    setCurrentProfiles((prevProfiles) => 
+    console.log('--- CardDeck: Detected right swipe, about to call onSwipeRight prop for:', profile.id);
+
+    // Call the prop function passed from HomeScreen ONCE
+    if (onSwipeRight) {
+        onSwipeRight(profile);
+    }
+
+    // Update local state to remove the card AFTER calling the prop
+    setCurrentProfiles((prevProfiles) =>
       prevProfiles.filter(p => p.id !== profile.id)
     );
-    onSwipeRight(profile);
+
+    // The second call has been removed.
   };
 
   return (

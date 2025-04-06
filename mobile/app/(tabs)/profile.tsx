@@ -12,6 +12,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { authService, profileService } from '@/services';
+import apiClient, { setUseDeviceUrl, setCustomDeviceUrl } from '@/services/apiClient';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -19,20 +20,49 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
 
-  // Load data when component mounts
+  const [authenticated, setAuthenticated] = useState<boolean>(false);
+
+  // İlk yüklemede kimlik doğrulama kontrolü
   useEffect(() => {
-    loadUserData();
+    const checkAuth = async () => {
+      try {
+        const isAuth = await authService.isAuthenticated();
+        setAuthenticated(isAuth);
+        
+        if (isAuth) {
+          // Sadece giriş yapıldıysa veri yükle
+          loadUserData();
+        } else {
+          // Giriş yapılmadıysa yükleme durumunu kapat
+          setLoading(false);
+        }
+      } catch (error) {
+        console.log('Kimlik doğrulama kontrolü hatası (sessiz)');
+        setAuthenticated(false);
+        setLoading(false);
+      }
+    };
+    
+    checkAuth();
   }, []);
   
-  // Refresh data when screen comes into focus (e.g., after returning from edit profile)
+  // Sayfaya her gelindiğinde ve kimlik doğrulanmışsa yeniden veri yükle
   useFocusEffect(
     React.useCallback(() => {
-      loadUserData();
+      if (authenticated) {
+        loadUserData();
+      }
       return () => {};
-    }, [])
+    }, [authenticated])
   );
 
   const loadUserData = async () => {
+    // Güvenlik kontrolü - sadece kimlik doğrulanmışsa API istekleri yap
+    if (!authenticated) {
+      setLoading(false);
+      return;
+    }
+    
     try {
       setLoading(true);
       
@@ -50,11 +80,11 @@ export default function ProfileScreen() {
         }
       } catch (error) {
         // Profile might not exist yet, that's ok
-        console.log('Profile not found, may need to be created');
+        console.log('Profile not found, may need to be created (sessiz)');
       }
     } catch (error) {
-      console.error('Error loading user data:', error);
-      Alert.alert('Error', 'Failed to load profile data');
+      console.log('Kullanıcı verisi yükleme hatası (sessiz)');
+      // Müşteriye hata mesajı gösterme, sadece iç log tutma
     } finally {
       setLoading(false);
     }
@@ -163,6 +193,54 @@ export default function ProfileScreen() {
                 <ThemedText style={styles.buttonText}>Edit Profile</ThemedText>
               </TouchableOpacity>
             )}
+            
+            <TouchableOpacity 
+              style={styles.button}
+              onPress={() => {
+                Alert.alert(
+                  'API URL Ayarı',
+                  'Fiziksel cihazda test edilirken API URL ayarını değiştirmek ister misiniz?',
+                  [
+                    {
+                      text: 'İptal',
+                      style: 'cancel',
+                    },
+                    {
+                      text: 'Simülatör/Emülatör Modu',
+                      onPress: async () => {
+                        try {
+                          await setUseDeviceUrl(false);
+                          Alert.alert(
+                            'Başarılı',
+                            'API URL simülatör/emülatör moduna ayarlandı',
+                            [{ text: 'Tamam', onPress: () => loadUserData() }]
+                          );
+                        } catch (error) {
+                          Alert.alert('Hata', 'API URL ayarlanamadı');
+                        }
+                      },
+                    },
+                    {
+                      text: 'Fiziksel Cihaz Modu',
+                      onPress: async () => {
+                        try {
+                          await setUseDeviceUrl(true);
+                          Alert.alert(
+                            'Başarılı',
+                            'API URL fiziksel cihaz moduna ayarlandı',
+                            [{ text: 'Tamam', onPress: () => loadUserData() }]
+                          );
+                        } catch (error) {
+                          Alert.alert('Hata', 'API URL ayarlanamadı');
+                        }
+                      },
+                    },
+                  ]
+                );
+              }}
+            >
+              <ThemedText style={styles.buttonText}>API URL Ayarla</ThemedText>
+            </TouchableOpacity>
             
             <TouchableOpacity 
               style={[styles.button, styles.logoutButton]} 
