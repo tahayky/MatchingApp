@@ -2,6 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { AppState } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
@@ -13,8 +14,13 @@ import { authService } from '@/services';
 import { OfflineNotice } from '@/components/OfflineNotice';
 import { checkInternetConnection } from '@/utils/networkUtils';
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+// Ensure splash screen setup is correct
+try {
+  SplashScreen.preventAutoHideAsync();
+  console.log("Splash screen prevention successful");
+} catch (e) {
+  console.warn("Error setting up splash screen:", e);
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -65,40 +71,53 @@ export default function RootLayout() {
   // İnternet bağlantısı kontrolü için state
   const [isConnected, setIsConnected] = useState<boolean>(true);
   
-  // Uygulama yüklendiğinde ve fontlar hazır olduğunda çalışacak
+  // Geliştirilmiş yükleme ve yönlendirme mantığı
   useEffect(() => {
     if (loaded) {
       const initialCheck = async () => {
         try {
+          console.log("Uygulama yüklendi, başlangıç kontrolleri yapılıyor...");
+          
           // Önce internet bağlantısı kontrolü yap
           const hasConnection = await checkInternetConnection();
           setIsConnected(hasConnection);
           
-          // İnternet bağlantısı durumunu kaydet, ama uygulamayı engelleme
           if (!hasConnection) {
             console.log('İnternet bağlantısı yok, banner gösterilecek...');
-            // Devam et, banner bağlantı olmadığını gösterecek
           }
           
-          // İnternet bağlantısı varsa kimlik doğrulama kontrolü yap
+          // Kimlik doğrulama kontrolü yap
           const authenticated = await authService.isAuthenticated();
+          console.log("Kimlik durumu:", authenticated ? "Oturum açık" : "Oturum kapalı");
+          
           if (!authenticated) {
-            // Uygulama açılışında giriş yapılmamışsa doğrudan giriş ekranına yönlendir
-            console.log('Başlangıç kontrolü: Kullanıcı oturum açmamış');
+            console.log('Başlangıç kontrolü: Kullanıcı oturum açmamış, auth sayfasına yönlendiriliyor');
             router.replace('/auth');
+          } else {
+            console.log('Başlangıç kontrolü: Kullanıcının oturumu açık, ana sayfaya yönlendiriliyor');
+            router.replace('/(tabs)');
           }
         } catch (error) {
           console.error('Başlangıç kontrolünde hata:', error);
+          // Hata durumunda auth sayfasına yönlendir
           router.replace('/auth');
+        } finally {
+          // Splash screen'i her durumda kapatmaya çalış
+          try {
+            console.log("Splash screen kapatılıyor...");
+            await SplashScreen.hideAsync();
+          } catch (e) {
+            console.warn("Splash screen kapatma hatası:", e);
+          }
         }
-        
-        // Başlangıç kontrolünden sonra splash screen'i kapat
-        SplashScreen.hideAsync();
       };
       
-      initialCheck();
+      // Kısa bir gecikme ile başlat (yükleme sorunlarını önlemek için)
+      setTimeout(() => {
+        initialCheck();
+      }, 100);
     }
-  }, [loaded]);
+  }, [loaded, router]);
   
   // Her 10 saniyede bir internet bağlantısını kontrol et
   useEffect(() => {

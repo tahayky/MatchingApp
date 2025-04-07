@@ -192,15 +192,10 @@ export default function HomeScreen() {
       
       console.log(`Beğenme API yanıtı:`, response);
       
-      // Bu bir demo profil mi? (kesinlikle demo olduğu bilinen ID'ler)
-      const isDemoProfile = profile.id.startsWith('sample-') || 
-                           profile.id === 'test-profile' ||
-                           profile.id === 'demo-user';
-      
-      // Sadece gerçek eşleşme varsa veya kesin olarak demo profil ise eşleşme göster
+      // Eşleşme kontrolü
       if (response.success && response.match.isMatch) {
-        // Gerçek başarılı eşleşme
-        console.log(`🎉 GERÇEK EŞLEŞME OLUŞTU! ${profile.name} ile eşleştiniz!`);
+        // Başarılı eşleşme
+        console.log(`🎉 EŞLEŞME OLUŞTU! ${profile.name} ile eşleştiniz!`);
         
         // Eşleşme durumu alert'i
         Alert.alert(
@@ -214,35 +209,9 @@ export default function HomeScreen() {
         
         // Eşleşme listesini güncelle
         fetchMatches();
-      } else if (isDemoProfile) {
-        // Sadece kesin demo profiller için demo eşleşme göster
-        console.log(`👾 DEMO EŞLEŞME! ${profile.name} ile demo eşleşme oluşturuldu`);
-        
-        Alert.alert(
-          "It's a Match! (Demo)",
-          `You and ${profile.name} liked each other. (Demo match)`,
-          [
-            { text: "Keep Swiping", style: "cancel" },
-            { text: "See Matches", onPress: () => console.log("Navigate to matches") }
-          ]
-        );
       } else if (response.success) {
         // Başarılı like ama henüz eşleşme yok
         console.log(`${profile.name} beğenildi, ancak henüz eşleşme yok`);
-        
-        // Test profili değilse rastgele eşleşme şansı ver (%30)
-        if (Math.random() > 0.7) {
-          console.log(`🎮 RASTGELE EŞLEŞME! ${profile.name} ile simüle eşleşme oluşturuldu`);
-          
-          Alert.alert(
-            "It's a Match! (Simulated)",
-            `You and ${profile.name} liked each other!`,
-            [
-              { text: "Keep Swiping", style: "cancel" },
-              { text: "See Matches", onPress: () => console.log("Navigate to matches") }
-            ]
-          );
-        }
       } else {
         // Başarısız API yanıtı ama hatalar kullanıcıya yansıtılmamalı
         console.log(`API yanıtı başarısız ama kullanıcı deneyimi devam ediyor.`);
@@ -250,19 +219,6 @@ export default function HomeScreen() {
     } catch (error) {
       // Ciddi hata - bu API isteğinin tamamen başarısız olduğu anlamına gelir
       console.log(`Kritik API hatası: ${error}`);
-      
-      // Çok daha nadir eşleşme simülasyonu (hata durumunda %10 şans)
-      if (Math.random() > 0.9) {
-        console.log(`🎮 HATA SONRASI EŞLEŞME! ${profile.name} ile hata sonrası simüle eşleşme`);
-        
-        Alert.alert(
-          "It's a Match! (Simulated)",
-          `You and ${profile.name} liked each other!`,
-          [
-            { text: "Keep Swiping", style: "cancel" }
-          ]
-        );
-      }
     }
   };
 
@@ -347,3 +303,7 @@ const styles = StyleSheet.create({
   },
   infoText: {
     marginTop: 10,
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  }
+});
