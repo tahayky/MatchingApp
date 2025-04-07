@@ -63,11 +63,17 @@ export default function HomeScreen() {
   //   }, [])
   // );
 
+  // Profil veri durumunu izleyen state
+  const [fetchAttempted, setFetchAttempted] = useState<boolean>(false);
+  
   // Gerçek API çağrısı yapan fetchProfiles
   const fetchProfiles = async () => {
     try {
       console.log('fetchProfiles çağrıldı - Backend\'den profilleri getirme');
       setLoading(true);
+      
+      // API'ye sadece bir kez istek yapmak için durumu güncelle
+      setFetchAttempted(true);
       
       // API istek limiti (maksimum 5 saniye)
       const timeoutPromise = new Promise<void>((_, reject) => {
@@ -124,16 +130,14 @@ export default function HomeScreen() {
         setProfiles(shuffledProfiles);
         console.log(`${shuffledProfiles.length} adet profil API'den başarıyla yüklendi ve karıştırıldı`);
       } else {
-        // API'dan profil dönmezse test profillerini kullan
-        console.log('API\'den profil bulunamadı, test profilleri kullanılıyor');
-        const shuffledMockProfiles = [...mockProfiles].sort(() => Math.random() - 0.5);
-        setProfiles(shuffledMockProfiles);
+        // API'dan profil dönmezse boş dizi kullan
+        console.log('API\'den profil bulunamadı');
+        setProfiles([]);
       }
     } catch (error) {
-      console.log('API hatası, test profilleri kullanılıyor:', error);
-      // Hata durumunda test profillerini karıştırarak kullan
-      const shuffledMockProfiles = [...mockProfiles].sort(() => Math.random() - 0.5);
-      setProfiles(shuffledMockProfiles);
+      console.log('API hatası:', error);
+      // Hata durumunda boş dizi kullan
+      setProfiles([]);
     } finally {
       setLoading(false);
     }
@@ -223,9 +227,14 @@ export default function HomeScreen() {
   };
 
   const handleDeckEmpty = () => {
-    // Kartlar bittiğinde API'den yeni profil getirmeyi dene
-    console.log('Deste boş, API\'den yeni profiller getiriliyor...');
-    fetchProfiles();
+    // Sadece ilk denemede API çağrısı yapın, zaten denenmişse tekrar denemeyin
+    if (!fetchAttempted) {
+      console.log('Deste boş, API\'den yeni profiller getiriliyor... (ilk deneme)');
+      fetchProfiles();
+    } else {
+      console.log('Deste boş, ancak zaten API denemesi yapıldı. Tekrar denenmeyecek.');
+      // Bir şey yapma - döngüyü kır
+    }
   };
   
   // Helper function to calculate age from date of birth

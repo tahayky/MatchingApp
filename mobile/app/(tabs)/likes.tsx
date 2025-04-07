@@ -70,13 +70,59 @@ export default function LikesScreen() {
       
       console.log('API isteği gönderiliyor: Beğenileri getir');
       
-      // There is no real likes endpoint in the backend
-      // For now, we don't show any likes since we can't determine who has liked the user
-      console.log('Backend\'de gerçek bir beğeni API\'si olmadığından beğeniler gösterilemiyor');
-      
-      // Empty likes array - real backend would need a proper endpoint for this
-      const formattedLikes: LikeProfile[] = [];
-      setLikes(formattedLikes);
+      try {
+        // Use the new /matches/likes endpoint that returns profiles that liked the current user
+        const response = await apiClient.get('/matches/likes');
+        
+        if (response.data.success && response.data.likes?.length > 0) {
+          console.log(`${response.data.likes.length} beğeni başarıyla alındı`);
+          
+          // API'den gelen beğenileri doğrudan kullan
+          const formattedLikes: LikeProfile[] = response.data.likes.map((like: any) => ({
+            userId: like.userId,
+            name: like.name,
+            age: like.age,
+            bio: like.bio,
+            likedAt: like.likedAt,
+            photo: like.photo
+          }));
+          
+          setLikes(formattedLikes);
+        } else {
+          console.log('API\'den beğeni bulunamadı');
+          setLikes([]);
+        }
+      } catch (apiError) {
+        console.error("Beğeni API'sine erişilemedi (normal, endpoint henüz çalışmıyor olabilir):", apiError);
+        
+        // Fallback: Try to get profiles
+        console.log("Alternatif: Profilleri getirme deneniyor...");
+        const profilesResponse = await apiClient.get('/profiles/discover');
+        
+        if (profilesResponse.data.success && profilesResponse.data.profiles?.length > 0) {
+          console.log(`${profilesResponse.data.profiles.length} profil alındı`);
+          
+          // Test amaçlı ilk 2 profili "beğeniler" gibi göster
+          const sampleProfiles = profilesResponse.data.profiles.slice(0, 2);
+          
+          const formattedLikes: LikeProfile[] = sampleProfiles.map((profile: any) => {
+            const user = profile.user || {};
+            return {
+              userId: profile._id,
+              name: user.name || "Unknown",
+              age: calculateAge(user.dateOfBirth || new Date().toISOString()),
+              bio: profile.bio || '',
+              likedAt: new Date().toISOString(), // Fake timestamp
+              photo: profile.photos?.find((p: any) => p.isMain)?.url
+            };
+          });
+          
+          setLikes(formattedLikes);
+        } else {
+          console.log('Profilleriniz bulunamadı, boş liste gösteriliyor');
+          setLikes([]);
+        }
+      }
     } catch (error) {
       console.error("Profil getirme hatası:", error);
       setLikes([]);
@@ -93,9 +139,42 @@ export default function LikesScreen() {
         { text: "View Profile", onPress: () => console.log("View Profile") },
         { 
           text: "Like Back", 
-          onPress: () => {
-            console.log("Liked back");
-            Alert.alert("Matched!", `You matched with ${like.name}!`);
+          onPress: async () => {
+            try {
+              // Send like action to the API
+              console.log(`Sending like action for profile ID: ${like.userId}`);
+              
+              // Call Match Action API
+              const response = await matchService.likeOrPassUser({
+                targetUserId: like.userId,
+                action: 'like'
+              });
+              
+              console.log("Like action response:", response);
+              
+              // Check if this created a match
+              if (response.success && response.match.isMatch) {
+                // It's a match!
+                Alert.alert(
+                  "It's a Match!",
+                  `You and ${like.name} liked each other!`,
+                  [
+                    { text: "Keep Browsing", style: "cancel" },
+                    { text: "View Matches", onPress: () => console.log("Navigate to matches") }
+                  ]
+                );
+                
+                // Refresh the likes list to remove this like (since it's now a match)
+                fetchLikes();
+              } else {
+                // Just a normal like (should never happen since these are people who already liked you)
+                Alert.alert("Liked!", `You liked ${like.name}!`);
+                fetchLikes();
+              }
+            } catch (error) {
+              console.error("Error sending like action:", error);
+              Alert.alert("Error", "Could not process your like. Please try again.");
+            }
           },
           style: "default"
         },

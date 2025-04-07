@@ -55,6 +55,17 @@ const ProfileSchema = new mongoose.Schema({
       default: 50 // km
     }
   },
+  // Track profiles that liked this profile
+  likedBy: [{
+    profile: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Profile'
+    },
+    likedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
   lastActive: {
     type: Date,
     default: Date.now

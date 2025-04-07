@@ -15,6 +15,8 @@ export interface ProfileData {
   ageRangeMin?: number;
   ageRangeMax?: number;
   maxDistance?: number;
+  gender?: 'male' | 'female' | 'other'; // Added gender field
+  interestedIn?: ('male' | 'female' | 'other')[]; // Added interestedIn field
 }
 
 // Giriş yapılıp yapılmadığını kontrol eden yardımcı fonksiyon
@@ -49,6 +51,8 @@ export interface ProfileResponse {
     occupation?: string;
     education?: string;
     height?: number;
+    gender?: 'male' | 'female' | 'other'; // Added gender field
+    interestedIn?: ('male' | 'female' | 'other')[]; // Added interestedIn field
     preferences?: {
       ageRange?: {
         min: number;
@@ -107,7 +111,7 @@ const profileService = {
       return response.data;
     } catch (error) {
       console.error('Profil oluşturma/güncelleme hatası:', error);
-      return { success: false, profile: null as any };
+      throw error; // Re-throw error to be caught by the component
     }
   },
   
@@ -245,6 +249,41 @@ const profileService = {
       // Diğer hataları sessizce işle
       console.log('Profilleri keşfetme hatası (sessiz)');
       return { success: false, profiles: [] };
+    }
+  },
+  
+  // New method to get user information for profile editing
+  async getUserInfo(): Promise<any> {
+    // Kimlik doğrulama kontrolü
+    if (!(await isAuthenticated())) {
+      return { success: false, user: null };
+    }
+    
+    try {
+      const response = await apiClient.get('/users/me');
+      return response.data;
+    } catch (error) {
+      console.error('Kullanıcı bilgisi alma hatası:', error);
+      return { success: false, user: null };
+    }
+  },
+  
+  // New method to update user information (gender, interestedIn)
+  async updateUserInfo(userData: {
+    gender?: 'male' | 'female' | 'other';
+    interestedIn?: ('male' | 'female' | 'other')[];
+  }): Promise<any> {
+    // Kimlik doğrulama kontrolü
+    if (!(await isAuthenticated())) {
+      return { success: false };
+    }
+    
+    try {
+      const response = await apiClient.put('/users/me', userData);
+      return response.data;
+    } catch (error) {
+      console.error('Kullanıcı bilgisi güncelleme hatası:', error);
+      throw error; // Re-throw to be handled by the component
     }
   }
 };

@@ -196,6 +196,13 @@ export default function ProfileScreen() {
             
             <TouchableOpacity 
               style={styles.button}
+              onPress={() => router.push('/profile/settings')}
+            >
+              <ThemedText style={styles.buttonText}>Ayarlar</ThemedText>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.button}
               onPress={() => {
                 Alert.alert(
                   'API URL Ayarı',

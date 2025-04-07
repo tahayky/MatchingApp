@@ -89,6 +89,48 @@ router.post('/action', protect, async (req, res) => {
       targetUser: profileUserId // Profile içindeki user ID'yi kullan!
     });
 
+    // Mevcut kullanıcının profilini al (like işlemi için gerekli)
+    let currentUserProfile = await Profile.findOne({ user: currentUserId });
+    
+    // Profil bulunamadıysa, findOneAndUpdate ile yeni profil oluştur
+    // Bu yöntem ile eğer user id ile profil bulunursa onu günceller, yoksa yeni oluşturur
+    if (!currentUserProfile) {
+      console.log(`[DEBUG] Current user (${currentUserId}) does not have a profile, creating or updating in action endpoint`);
+      
+      try {
+        currentUserProfile = await Profile.findOneAndUpdate(
+          { user: currentUserId }, // Arama kriteri
+          { 
+            $setOnInsert: {
+              user: currentUserId,
+              location: {
+                type: 'Point', // GeoJSON formatı için gerekli
+                coordinates: [0, 0],
+                city: 'Unknown',
+                country: 'Unknown'
+              },
+              likedBy: [], // Başlangıçta boş likedBy listesi
+              lastActive: new Date(),
+              createdAt: new Date()
+            }
+          },
+          { 
+            new: true, // Güncellenen/oluşturulan belgeyi döndür
+            upsert: true, // Belge yoksa oluştur
+            setDefaultsOnInsert: true // Şema varsayılanlarını uygula
+          }
+        );
+        
+        console.log(`[DEBUG] Created or updated profile for user ${currentUserId} in action endpoint: ${currentUserProfile._id}`);
+      } catch (profileError) {
+        console.error('Error with profile in action endpoint:', profileError);
+        return res.status(500).json({
+          success: false,
+          message: 'Error creating user profile'
+        });
+      }
+    }
+
     let isNewAction = false;
     if (match) {
       // Mevcut kaydı güncelle (örneğin pass'tan like'a değişirse)
@@ -98,6 +140,21 @@ router.post('/action', protect, async (req, res) => {
           if (action === 'like') {
               match.isMatch = false;
               match.matchedAt = null;
+              
+              // Like durumunda hedef profilin likedBy dizisine ekle
+              // Önce zaten eklenmiş mi diye kontrol et
+              const alreadyLiked = targetProfile.likedBy.some(
+                like => like.profile.toString() === currentUserProfile._id.toString()
+              );
+              
+              if (!alreadyLiked) {
+                targetProfile.likedBy.push({
+                  profile: currentUserProfile._id,
+                  likedAt: new Date()
+                });
+                await targetProfile.save();
+                console.log(`[DEBUG] Added user ${currentUserId} to likedBy array of profile ${targetProfile._id}`);
+              }
           }
           await match.save();
           console.log(`[DEBUG] Updated existing action for user ${currentUserId} to target user ${profileUserId} with action ${action}`);
@@ -113,6 +170,32 @@ router.post('/action', protect, async (req, res) => {
       });
       await match.save();
       isNewAction = true;
+      
+  // Eğer like ise, hedef profilin likedBy dizisine ekle
+  if (action === 'like') {
+    // Log the likedBy array before updating
+    console.log(`[DEBUG] Current likedBy array for profile ${targetProfile._id} before update:`, JSON.stringify(targetProfile.likedBy || [], null, 2));
+    
+    // Check if liker is already in the likedBy array
+    const alreadyLiked = targetProfile.likedBy && targetProfile.likedBy.some(
+      like => like.profile && like.profile.toString() === currentUserProfile._id.toString()
+    );
+    
+    if (!alreadyLiked) {
+      targetProfile.likedBy.push({
+        profile: currentUserProfile._id,
+        likedAt: new Date()
+      });
+      
+      // Save the updated profile
+      const savedProfile = await targetProfile.save();
+      console.log(`[DEBUG] Added profile ${currentUserProfile._id} to likedBy array of profile ${targetProfile._id}`);
+      console.log(`[DEBUG] Updated likedBy array:`, JSON.stringify(savedProfile.likedBy || [], null, 2));
+    } else {
+      console.log(`[DEBUG] Profile ${currentUserProfile._id} already in likedBy array of profile ${targetProfile._id}`);
+    }
+  }
+      
       console.log(`[DEBUG] Created new action for user ${currentUserId} to target user ${profileUserId} with action ${action}`);
     }
 
@@ -225,6 +308,132 @@ router.get('/', protect, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error while fetching matches',
+      error: error.message
+    });
+  }
+});
+
+// @route   GET /api/matches/likes
+// @desc    Get all profiles that liked the current user (using new likedBy array)
+// @access  Private
+router.get('/likes', protect, async (req, res) => {
+  try {
+    const currentUserId = req.user._id;
+
+    // Mevcut kullanıcının profilini bul
+    let currentUserProfile = await Profile.findOne({ user: currentUserId });
+    
+    // Profil bulunamadıysa, findOneAndUpdate ile yeni profil oluştur
+    // Bu yöntem ile eğer user id ile profil bulunursa onu günceller, yoksa yeni oluşturur
+    if (!currentUserProfile) {
+      console.log(`[DEBUG] Current user (${currentUserId}) does not have a profile, creating or updating in likes endpoint`);
+      
+      try {
+        currentUserProfile = await Profile.findOneAndUpdate(
+          { user: currentUserId }, // Arama kriteri
+          { 
+            // Profil alanları
+            $setOnInsert: {
+              user: currentUserId,
+              location: {
+                type: 'Point', // GeoJSON formatı için gerekli
+                coordinates: [0, 0],
+                city: 'Unknown',
+                country: 'Unknown'
+              },
+              likedBy: [], // Başlangıçta boş likedBy listesi
+              lastActive: new Date(),
+              createdAt: new Date()
+            }
+          },
+          { 
+            new: true, // Güncellenen/oluşturulan belgeyi döndür
+            upsert: true, // Belge yoksa oluştur
+            setDefaultsOnInsert: true // Şema varsayılanlarını uygula
+          }
+        );
+        
+        console.log(`[DEBUG] Created or updated profile for user ${currentUserId} in likes endpoint: ${currentUserProfile._id}`);
+        
+      } catch (profileError) {
+        console.error('Error with profile in likes endpoint:', profileError);
+        return res.status(500).json({
+          success: false,
+          message: 'Error creating user profile'
+        });
+      }
+    }
+
+    // Kullanıcının profilinde likedBy dizisi var mı kontrol et
+    if (!currentUserProfile.likedBy || currentUserProfile.likedBy.length === 0) {
+      // Boş beğeni listesi döndür
+      return res.json({
+        success: true,
+        likes: []
+      });
+    }
+
+    // likedBy dizisindeki profil ID'lerini topla
+    const likerProfileIds = currentUserProfile.likedBy.map(like => like.profile);
+
+    // Bu profilleri popüle et
+    const likerProfiles = await Profile.find({
+      _id: { $in: likerProfileIds }
+    }).populate('user', 'name dateOfBirth');  // Kullanıcı temel bilgilerini al
+
+    // Zaten eşleşmiş olan profilleri bul (bunları filtrelemek için)
+    const existingMatches = await Match.find({
+      user: currentUserId,
+      action: 'like',
+      isMatch: true,
+      active: true
+    }).select('targetUser');
+    
+    const matchedUserIds = existingMatches.map(match => match.targetUser.toString());
+
+    // Sonuçları formatla ve eşleşenleri hariç tut
+    const formattedLikes = likerProfiles
+      .filter(profile => !matchedUserIds.includes(profile.user._id.toString())) // Zaten eşleşmiş olanları filtrele
+      .map(profile => {
+        // Kullanıcının bu profile ne zaman beğeni gönderdiğini bul
+        const likeInfo = currentUserProfile.likedBy.find(
+          like => like.profile.toString() === profile._id.toString()
+        );
+        
+        // Ana fotoğrafı bul
+        const mainPhoto = profile.photos?.find(p => p.isMain);
+        
+        // Yaş hesapla
+        const birthDate = new Date(profile.user.dateOfBirth);
+        const today = new Date();
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+          age--;
+        }
+        
+        return {
+          userId: profile.user._id,
+          profileId: profile._id,
+          name: profile.user.name,
+          age: age,
+          bio: profile.bio || '',
+          likedAt: likeInfo?.likedAt || new Date(),
+          photo: mainPhoto?.url || null
+        };
+      })
+      .sort((a, b) => new Date(b.likedAt).getTime() - new Date(a.likedAt).getTime()); // En yeni beğeniler önce
+
+    res.json({
+      success: true,
+      likes: formattedLikes
+    });
+
+  } catch (error) {
+    console.error('Get likes error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching likes',
       error: error.message
     });
   }

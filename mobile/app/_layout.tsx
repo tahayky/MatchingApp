@@ -33,91 +33,37 @@ export default function RootLayout() {
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   
-  // Check if the user is authenticated
-  // Daha güçlü kimlik doğrulama kontrolü
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const authenticated = await authService.isAuthenticated();
-        setIsAuthenticated(authenticated);
-        
-        const inAuthGroup = segments[0] === 'auth';
-        
-        if (!authenticated) {
-          // Kimlik doğrulanmadıysa her zaman giriş ekranına yönlendir
-          if (!inAuthGroup) {
-            console.log('Kullanıcı oturum açmamış, giriş ekranına yönlendiriliyor...');
-            router.replace('/auth');
-          }
-        } else {
-          // Kimlik doğrulandıysa ve giriş ekranındaysa ana ekrana yönlendir
-          if (inAuthGroup) {
-            console.log('Kullanıcı zaten oturum açmış, ana ekrana yönlendiriliyor...');
-            router.replace('/(tabs)');
-          }
-        }
-      } catch (error) {
-        console.error('Kimlik doğrulama kontrolünde hata:', error);
-        // Hata durumunda güvenli taraf, giriş ekranına yönlendirmektir
-        router.replace('/auth');
-      }
-    };
-    
-    // Başlangıçta ve segment değişikliklerinde kontrol et
-    checkAuth();
-  }, [segments]);
-  
-  // Ek olarak, uygulama açılışında da giriş durumunu kontrol et
   // İnternet bağlantısı kontrolü için state
   const [isConnected, setIsConnected] = useState<boolean>(true);
   
-  // Geliştirilmiş yükleme ve yönlendirme mantığı
+  // Sadece splash screen kapatma ve internet bağlantısı kontrolü yap
   useEffect(() => {
-    if (loaded) {
-      const initialCheck = async () => {
-        try {
-          console.log("Uygulama yüklendi, başlangıç kontrolleri yapılıyor...");
-          
-          // Önce internet bağlantısı kontrolü yap
-          const hasConnection = await checkInternetConnection();
-          setIsConnected(hasConnection);
-          
-          if (!hasConnection) {
-            console.log('İnternet bağlantısı yok, banner gösterilecek...');
-          }
-          
-          // Kimlik doğrulama kontrolü yap
-          const authenticated = await authService.isAuthenticated();
-          console.log("Kimlik durumu:", authenticated ? "Oturum açık" : "Oturum kapalı");
-          
-          if (!authenticated) {
-            console.log('Başlangıç kontrolü: Kullanıcı oturum açmamış, auth sayfasına yönlendiriliyor');
-            router.replace('/auth');
-          } else {
-            console.log('Başlangıç kontrolü: Kullanıcının oturumu açık, ana sayfaya yönlendiriliyor');
-            router.replace('/(tabs)');
-          }
-        } catch (error) {
-          console.error('Başlangıç kontrolünde hata:', error);
-          // Hata durumunda auth sayfasına yönlendir
-          router.replace('/auth');
-        } finally {
-          // Splash screen'i her durumda kapatmaya çalış
-          try {
-            console.log("Splash screen kapatılıyor...");
-            await SplashScreen.hideAsync();
-          } catch (e) {
-            console.warn("Splash screen kapatma hatası:", e);
-          }
+    if (!loaded) return;
+    
+    const initialize = async () => {
+      try {
+        // İnternet bağlantısı kontrolü
+        const hasConnection = await checkInternetConnection();
+        setIsConnected(hasConnection);
+        
+        if (!hasConnection) {
+          console.log('İnternet bağlantısı yok, banner gösterilecek...');
         }
-      };
-      
-      // Kısa bir gecikme ile başlat (yükleme sorunlarını önlemek için)
-      setTimeout(() => {
-        initialCheck();
-      }, 100);
-    }
-  }, [loaded, router]);
+      } catch (error) {
+        console.error('Başlangıç kontrolünde hata:', error);
+      } finally {
+        // Splash screen'i kapatmaya çalış
+        try {
+          console.log("Splash screen kapatılıyor...");
+          await SplashScreen.hideAsync();
+        } catch (e) {
+          console.warn("Splash screen kapatma hatası:", e);
+        }
+      }
+    };
+    
+    initialize();
+  }, [loaded]);
   
   // Her 10 saniyede bir internet bağlantısını kontrol et
   useEffect(() => {

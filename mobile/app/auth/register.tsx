@@ -158,16 +158,42 @@ export default function RegisterScreen() {
             
             <ThemedView style={styles.inputContainer}>
               <ThemedText>Gender</ThemedText>
-              <ThemedView style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={gender}
-                  onValueChange={(itemValue) => setGender(itemValue)}
-                  style={styles.picker}
+              <ThemedView style={styles.checkboxContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.checkbox,
+                    gender === 'male' && styles.checkboxSelected
+                  ]}
+                  onPress={() => setGender('male')}
                 >
-                  <Picker.Item label="Male" value="male" />
-                  <Picker.Item label="Female" value="female" />
-                  <Picker.Item label="Other" value="other" />
-                </Picker>
+                  <ThemedText style={gender === 'male' ? styles.checkboxTextSelected : {}}>
+                    Male
+                  </ThemedText>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[
+                    styles.checkbox,
+                    gender === 'female' && styles.checkboxSelected
+                  ]}
+                  onPress={() => setGender('female')}
+                >
+                  <ThemedText style={gender === 'female' ? styles.checkboxTextSelected : {}}>
+                    Female
+                  </ThemedText>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[
+                    styles.checkbox,
+                    gender === 'other' && styles.checkboxSelected
+                  ]}
+                  onPress={() => setGender('other')}
+                >
+                  <ThemedText style={gender === 'other' ? styles.checkboxTextSelected : {}}>
+                    Other
+                  </ThemedText>
+                </TouchableOpacity>
               </ThemedView>
             </ThemedView>
             

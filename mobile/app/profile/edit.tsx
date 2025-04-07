@@ -33,7 +33,9 @@ export default function EditProfileScreen() {
     height: undefined,
     ageRangeMin: 18,
     ageRangeMax: 100,
-    maxDistance: 50
+    maxDistance: 50,
+    gender: 'male', // Default to male
+    interestedIn: ['female'] // Default to interested in female
   });
 
   useEffect(() => {
@@ -85,6 +87,19 @@ export default function EditProfileScreen() {
           : formData.interests
       };
       
+      // Ensure coordinates are properly formatted as an array of numbers
+      if (!apiData.coordinates || !Array.isArray(apiData.coordinates) || apiData.coordinates.length !== 2) {
+        apiData.coordinates = [0, 0]; // Default to [0,0] if invalid
+      }
+      
+      // Make sure all numeric fields are actually numbers, not strings
+      if (typeof apiData.height === 'string') apiData.height = Number(apiData.height);
+      if (typeof apiData.ageRangeMin === 'string') apiData.ageRangeMin = Number(apiData.ageRangeMin);
+      if (typeof apiData.ageRangeMax === 'string') apiData.ageRangeMax = Number(apiData.ageRangeMax);
+      if (typeof apiData.maxDistance === 'string') apiData.maxDistance = Number(apiData.maxDistance);
+      
+      console.log('Sending profile data:', JSON.stringify(apiData, null, 2)); // Debug log
+      
       const response = await profileService.createOrUpdateProfile(apiData);
       
       if (response.success) {
@@ -93,9 +108,17 @@ export default function EditProfileScreen() {
       } else {
         Alert.alert('Error', 'Failed to save profile');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving profile:', error);
-      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to save profile');
+      
+      // Check if it's an API error with response data
+      if (error.response && error.response.data) {
+        console.error('API error details:', error.response.data);
+        Alert.alert('Error', error.response.data.message || 'Server error. Please try again.');
+      } else {
+        // Generic error
+        Alert.alert('Error', error instanceof Error ? error.message : 'Failed to save profile');
+      }
     } finally {
       setSaving(false);
     }
@@ -268,6 +291,109 @@ export default function EditProfileScreen() {
               </ThemedView>
             </ThemedView>
             
+            <ThemedView style={styles.inputContainer}>
+              <ThemedText>Gender</ThemedText>
+              <ThemedView style={styles.checkboxContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.checkbox,
+                    formData.gender === 'male' && styles.checkboxSelected
+                  ]}
+                  onPress={() => updateField('gender', 'male')}
+                >
+                  <ThemedText style={formData.gender === 'male' ? styles.checkboxTextSelected : {}}>
+                    Male
+                  </ThemedText>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[
+                    styles.checkbox,
+                    formData.gender === 'female' && styles.checkboxSelected
+                  ]}
+                  onPress={() => updateField('gender', 'female')}
+                >
+                  <ThemedText style={formData.gender === 'female' ? styles.checkboxTextSelected : {}}>
+                    Female
+                  </ThemedText>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[
+                    styles.checkbox,
+                    formData.gender === 'other' && styles.checkboxSelected
+                  ]}
+                  onPress={() => updateField('gender', 'other')}
+                >
+                  <ThemedText style={formData.gender === 'other' ? styles.checkboxTextSelected : {}}>
+                    Other
+                  </ThemedText>
+                </TouchableOpacity>
+              </ThemedView>
+            </ThemedView>
+            
+            <ThemedView style={styles.inputContainer}>
+              <ThemedText>Interested In (select one or more)</ThemedText>
+              <ThemedView style={styles.checkboxContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.checkbox,
+                    formData.interestedIn?.includes('male') && styles.checkboxSelected
+                  ]}
+                  onPress={() => {
+                    const current = formData.interestedIn || [];
+                    if (current.includes('male')) {
+                      updateField('interestedIn', current.filter(item => item !== 'male'));
+                    } else {
+                      updateField('interestedIn', [...current, 'male']);
+                    }
+                  }}
+                >
+                  <ThemedText style={formData.interestedIn?.includes('male') ? styles.checkboxTextSelected : {}}>
+                    Male
+                  </ThemedText>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[
+                    styles.checkbox,
+                    formData.interestedIn?.includes('female') && styles.checkboxSelected
+                  ]}
+                  onPress={() => {
+                    const current = formData.interestedIn || [];
+                    if (current.includes('female')) {
+                      updateField('interestedIn', current.filter(item => item !== 'female'));
+                    } else {
+                      updateField('interestedIn', [...current, 'female']);
+                    }
+                  }}
+                >
+                  <ThemedText style={formData.interestedIn?.includes('female') ? styles.checkboxTextSelected : {}}>
+                    Female
+                  </ThemedText>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[
+                    styles.checkbox,
+                    formData.interestedIn?.includes('other') && styles.checkboxSelected
+                  ]}
+                  onPress={() => {
+                    const current = formData.interestedIn || [];
+                    if (current.includes('other')) {
+                      updateField('interestedIn', current.filter(item => item !== 'other'));
+                    } else {
+                      updateField('interestedIn', [...current, 'other']);
+                    }
+                  }}
+                >
+                  <ThemedText style={formData.interestedIn?.includes('other') ? styles.checkboxTextSelected : {}}>
+                    Other
+                  </ThemedText>
+                </TouchableOpacity>
+              </ThemedView>
+            </ThemedView>
+            
             <ThemedView style={styles.buttonContainer}>
               <TouchableOpacity 
                 style={styles.button} 
@@ -362,5 +488,27 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  // Added for checkbox functionality
+  checkboxContainer: {
+    flexDirection: 'row',
+    marginTop: 8,
+    justifyContent: 'space-between',
+  },
+  checkbox: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    padding: 12,
+    flex: 1,
+    marginHorizontal: 4,
+    alignItems: 'center',
+  },
+  checkboxSelected: {
+    backgroundColor: '#2196F3',
+    borderColor: '#2196F3',
+  },
+  checkboxTextSelected: {
+    color: 'white',
   },
 });

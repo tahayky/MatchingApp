@@ -26,16 +26,24 @@ export function CardDeck({ profiles, onSwipeLeft, onSwipeRight, onDeckEmpty }: C
     }
   }, [profiles]);
 
-  // Check if deck is empty - fix edilmiş boş deste kontrolü
+  // Boş deste kontrolü - sonsuz döngüyü önlemek için iyileştirildi
+  const [hasCalledEmpty, setHasCalledEmpty] = useState<boolean>(false);
+  
   useEffect(() => {
     console.log(`CardDeck: currentProfiles uzunluğu: ${currentProfiles.length}`);
     
-    // Sadece currentProfiles boşsa ve dışarıdan gelen profiles dolu değilse yeni profil iste
-    if (currentProfiles.length === 0 && profiles.length === 0) {
-      console.log('CardDeck: Gerçekten boş deste tespit edildi, yeni profil isteniyor');
+    // Sadece bir kez onDeckEmpty çağır
+    if (currentProfiles.length === 0 && profiles.length === 0 && !hasCalledEmpty) {
+      console.log('CardDeck: Gerçekten boş deste tespit edildi, yeni profil isteniyor (bir kez)');
+      setHasCalledEmpty(true);
       onDeckEmpty();
     }
-  }, [currentProfiles, profiles, onDeckEmpty]);
+    
+    // profiles prop'u değiştiğinde hasCalledEmpty'yi sıfırla
+    if (profiles.length > 0) {
+      setHasCalledEmpty(false);
+    }
+  }, [currentProfiles, profiles, onDeckEmpty, hasCalledEmpty]);
 
   const handleSwipeLeft = (profile: ProfileData) => {
     setCurrentProfiles((prevProfiles) => 

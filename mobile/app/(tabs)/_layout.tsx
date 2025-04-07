@@ -1,15 +1,65 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
-import { Platform } from 'react-native';
+import { Tabs, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { Platform, ActivityIndicator, View } from 'react-native';
 
 import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import TabBarBackground from '@/components/ui/TabBarBackground';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { authService } from '@/services';
+import { ThemedText } from '@/components/ThemedText';
+import { ThemedView } from '@/components/ThemedView';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const router = useRouter();
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  
+  // Check authentication
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        console.log('Tab Layout: Kimlik doğrulama kontrolü yapılıyor');
+        const authenticated = await authService.isAuthenticated();
+        
+        console.log('Tab Layout: Kimlik durumu:', authenticated ? 'Oturum açık' : 'Oturum kapalı');
+        
+        setIsAuthenticated(authenticated);
+        
+        if (!authenticated) {
+          // If not authenticated, redirect to auth
+          console.log('Tab Layout: Kullanıcı oturum açmamış, giriş ekranına yönlendiriliyor...');
+          router.replace('/auth');
+        }
+      } catch (error) {
+        console.error('Tab Layout: Kimlik doğrulama hatası:', error);
+        setIsAuthenticated(false);
+        router.replace('/auth');
+      }
+    };
+    
+    checkAuth();
+  }, []);
+  
+  // Show loading while checking authentication
+  if (isAuthenticated === null) {
+    return (
+      <ThemedView style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+        <ActivityIndicator size="large" />
+        <ThemedText style={{marginTop: 20}}>Kimlik doğrulanıyor...</ThemedText>
+      </ThemedView>
+    );
+  }
+  
+  // If not authenticated, should redirect but just in case, show a message
+  if (isAuthenticated === false) {
+    return (
+      <ThemedView style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+        <ThemedText>Oturum açmanız gerekiyor</ThemedText>
+      </ThemedView>
+    );
+  }
 
   return (
     <Tabs

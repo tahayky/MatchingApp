@@ -69,6 +69,7 @@ router.post('/', protect, async (req, res) => {
       user: req.user._id,
       bio,
       location: {
+        type: 'Point', // Required for GeoJSON format
         coordinates: coordinates || [0, 0],
         city,
         country
@@ -76,7 +77,8 @@ router.post('/', protect, async (req, res) => {
       interests: interests ? interests.split(',').map(interest => interest.trim()) : [],
       occupation,
       education,
-      height
+      height,
+      likedBy: [] // Empty array for likedBy - will be populated via match system
     };
 
     // Build preferences object
@@ -142,6 +144,7 @@ router.get('/me', protect, async (req, res) => {
         user: req.user._id,
         bio: 'This is a sample profile. Please complete your profile.',
         location: {
+          type: 'Point', // Required for GeoJSON
           coordinates: [0, 0],
           city: 'Your City',
           country: 'Your Country'
@@ -285,147 +288,126 @@ router.get('/discover', protect, async (req, res) => {
     console.log('[DEBUG] Discover API endpoint çağrıldı');
     
     // Kullanıcı ve profil bilgilerini al
-    const userProfile = await Profile.findOne({ user: req.user._id });
     const user = await User.findById(req.user._id);
-    
-    // Kullanıcı veya profil bulunamazsa
-    if (!userProfile || !user) {
-      console.log('[DEBUG] Kullanıcı profili bulunamadı');
-      
-      // Örnek profiller oluştur - frontend'e bazı veriler vermek için
-      const sampleProfiles = [];
-      
-      // Sistemdeki 5 rastgele kullanıcıyı bul
-      const sampleUsers = await User.find({ _id: { $ne: req.user._id } }).limit(5);
-      
-      // Her kullanıcı için örnek profil oluştur
-      for (const sampleUser of sampleUsers) {
-        // Kullanıcı profilini bul
-        const profile = await Profile.findOne({ user: sampleUser._id });
-        
-        // Profil varsa ekle
-        if (profile) {
-          sampleProfiles.push({
-            _id: profile._id,
-            user: {
-              _id: sampleUser._id,
-              name: sampleUser.name,
-              dateOfBirth: sampleUser.dateOfBirth,
-              gender: sampleUser.gender
-            },
-            photos: profile.photos || [],
-            bio: profile.bio || 'No bio available',
-            location: profile.location || { city: 'Unknown', country: 'Unknown' },
-            interests: profile.interests || [],
-            occupation: profile.occupation || 'Not specified',
-            education: profile.education || 'Not specified'
-          });
-        }
-      }
-      
-      // Eğer hiç profil bulunamazsa, örnek profil oluştur
-      if (sampleProfiles.length === 0) {
-        console.log('[DEBUG] Örnek profiller oluşturuluyor');
-        
-        // Garanti çalışacak örnek profiller oluştur
-        for (let i = 1; i <= 5; i++) {
-          sampleProfiles.push({
-            _id: `sample-${i}`, // ID formatı önemli
-            user: {
-              _id: `user-${i}`,
-              name: `Sample User ${i}`,
-              dateOfBirth: new Date(1990, 0, 1).toISOString(),
-              gender: i % 2 === 0 ? 'male' : 'female'
-            },
-            photos: [{ // Her zaman en az bir fotoğraf ekleyelim
-              _id: `photo-sample-${i}`,
-              url: 'https://i.pravatar.cc/300', // Rastgele avatar resmi
-              isMain: true
-            }],
-            bio: `This is a sample profile ${i}. Swiping right on this profile will simulate a match!`,
-            location: { city: 'İstanbul', country: 'Türkiye' },
-            interests: ['dating', 'matching', 'profiles'],
-            occupation: 'Sample Job',
-            education: 'Sample University'
-          });
-        }
-      }
-      
-      return res.json({
-        success: true,
-        profiles: sampleProfiles
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
       });
     }
-
-    // Set up base filters
-    const filters = {
-      user: { $ne: req.user._id }, // Not current user
-    };
-
-    // Add gender preference filter
-    if (user.interestedIn && user.interestedIn.length > 0) {
-      // Find users with matching genders to those the current user is interested in
-      const interestedUsers = await User.find({ 
-        gender: { $in: user.interestedIn } 
-      }).select('_id');
-      
-      filters.user = { 
-        $in: interestedUsers.map(u => u._id),
-        $ne: req.user._id
-      };
-    }
-
-    // Get location based distance preference
-    const maxDistance = userProfile.preferences?.distance || 50; // km
     
-    // Set up geo filter if coordinates are available
-    let geoFilter = {};
-    if (userProfile.location && userProfile.location.coordinates && 
-        userProfile.location.coordinates[0] !== 0 && 
-        userProfile.location.coordinates[1] !== 0) {
-      geoFilter = {
-        location: {
-          $near: {
-            $geometry: {
-              type: 'Point',
-              coordinates: userProfile.location.coordinates
+    console.log(`[DEBUG] Current user: ${user._id}, interested in: ${user.interestedIn.join(', ')}`);
+    
+    // Find or create user profile with upsert
+    let userProfile = await Profile.findOne({ user: req.user._id });
+    if (!userProfile) {
+      console.log(`[DEBUG] Kullanıcı profili bulunamadı (${req.user._id}), yeni profil oluşturuluyor`);
+      
+      // Create default profile for current user
+      userProfile = await Profile.findOneAndUpdate(
+        { user: req.user._id },
+        { 
+          $setOnInsert: {
+            user: req.user._id,
+            location: {
+              type: 'Point', // Required for GeoJSON format
+              coordinates: [0, 0],
+              city: 'Unknown',
+              country: 'Unknown'
             },
-            $maxDistance: maxDistance * 1000 // convert km to meters
+            interests: [],
+            likedBy: [],
+            lastActive: new Date(),
+            createdAt: new Date()
           }
+        },
+        { 
+          new: true,
+          upsert: true,
+          setDefaultsOnInsert: true
         }
-      };
+      );
+      
+      console.log(`[DEBUG] Yeni profil oluşturuldu: ${userProfile._id}`);
     }
-
-    // Combine all filters
-    const combinedFilter = { ...filters, ...geoFilter };
-
-    // Find matching profiles
-    const profiles = await Profile.find(combinedFilter)
-      .populate('user', 'name dateOfBirth gender')
-      .limit(20);
-      
-    console.log(`[DEBUG] Bulunan profil sayısı: ${profiles.length}`);
     
-    // Profillerin sayısını logla
-    console.log(`[DEBUG] Bulunan profil sayısı: ${profiles.length}`);
+    // Step 1: Find all users matching gender preferences
+    const interestedInGenders = user.interestedIn;
+    console.log(`[DEBUG] Finding users with genders: ${interestedInGenders}`);
     
-    // Demo profilleri devre dışı bırakıldı - artık sadece gerçek profiller gösteriliyor
-    if (profiles.length === 0) {
-      console.log('[DEBUG] Gerçek profil bulunamadı, boş liste döndürülüyor');
-      
-      // Boş bir dizi döndür - demo profil yok
-      res.json({
+    // Find users matching the gender preferences
+    const genderMatchingUsers = await User.find({
+      _id: { $ne: user._id }, // Exclude the current user
+      gender: { $in: interestedInGenders } // Only include users with matching genders
+    }).select('_id gender');
+    
+    console.log(`[DEBUG] Found ${genderMatchingUsers.length} users matching gender preferences`);
+    
+    if (genderMatchingUsers.length === 0) {
+      console.log('[DEBUG] No users found matching gender preferences');
+      return res.json({
         success: true,
         profiles: []
       });
-    } else {
-      // Return real profiles
-      console.log('[DEBUG] Gerçek profiller döndürülüyor');
-      res.json({
-        success: true,
-        profiles
-      });
     }
+    
+    // Extract just the user IDs
+    const genderMatchingUserIds = genderMatchingUsers.map(u => u._id);
+    
+    // Step 2: Find profiles for these users
+    const query = {
+      user: { $in: genderMatchingUserIds }
+    };
+    
+    // Apply location-based filtering if coordinates available
+    if (userProfile.location && 
+        userProfile.location.coordinates && 
+        userProfile.location.coordinates[0] !== 0 && 
+        userProfile.location.coordinates[1] !== 0) {
+      
+      const maxDistance = userProfile.preferences?.distance || 50; // km
+      
+      query.location = {
+        $near: {
+          $geometry: {
+            type: 'Point',
+            coordinates: userProfile.location.coordinates
+          },
+          $maxDistance: maxDistance * 1000 // convert km to meters
+        }
+      };
+    }
+    
+    console.log(`[DEBUG] Querying profiles with filters: ${JSON.stringify(query)}`);
+    
+    // Find profiles with pagination (limit to 20)
+    const profiles = await Profile.find(query)
+      .populate({
+        path: 'user',
+        select: 'name dateOfBirth gender' // Only include necessary user fields
+      })
+      .limit(20);
+    
+    console.log(`[DEBUG] Found ${profiles.length} profiles matching criteria`);
+    
+    // Verify all returned profiles have users with matching genders
+    for (const profile of profiles) {
+      if (!profile.user || !profile.user.gender) {
+        console.log(`[WARNING] Profile ${profile._id} has no user or gender information`);
+        continue;
+      }
+      
+      if (!interestedInGenders.includes(profile.user.gender)) {
+        console.log(`[ERROR] Profile ${profile._id} has user with gender ${profile.user.gender} which is not in ${interestedInGenders}`);
+      }
+    }
+    
+    // Return the profiles
+    return res.json({
+      success: true,
+      profiles: profiles
+    });
+    
   } catch (error) {
     console.error('Discover profiles error:', error);
     res.status(500).json({ 
