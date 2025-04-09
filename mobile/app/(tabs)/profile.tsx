@@ -202,54 +202,6 @@ export default function ProfileScreen() {
             </TouchableOpacity>
             
             <TouchableOpacity 
-              style={styles.button}
-              onPress={() => {
-                Alert.alert(
-                  'API URL Ayarı',
-                  'Fiziksel cihazda test edilirken API URL ayarını değiştirmek ister misiniz?',
-                  [
-                    {
-                      text: 'İptal',
-                      style: 'cancel',
-                    },
-                    {
-                      text: 'Simülatör/Emülatör Modu',
-                      onPress: async () => {
-                        try {
-                          await setUseDeviceUrl(false);
-                          Alert.alert(
-                            'Başarılı',
-                            'API URL simülatör/emülatör moduna ayarlandı',
-                            [{ text: 'Tamam', onPress: () => loadUserData() }]
-                          );
-                        } catch (error) {
-                          Alert.alert('Hata', 'API URL ayarlanamadı');
-                        }
-                      },
-                    },
-                    {
-                      text: 'Fiziksel Cihaz Modu',
-                      onPress: async () => {
-                        try {
-                          await setUseDeviceUrl(true);
-                          Alert.alert(
-                            'Başarılı',
-                            'API URL fiziksel cihaz moduna ayarlandı',
-                            [{ text: 'Tamam', onPress: () => loadUserData() }]
-                          );
-                        } catch (error) {
-                          Alert.alert('Hata', 'API URL ayarlanamadı');
-                        }
-                      },
-                    },
-                  ]
-                );
-              }}
-            >
-              <ThemedText style={styles.buttonText}>API URL Ayarla</ThemedText>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
               style={[styles.button, styles.logoutButton]} 
               onPress={handleLogout}
             >

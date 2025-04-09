@@ -1,18 +1,38 @@
-const express = require('express');
-const router = express.Router();
-const User = require('../models/User');
-const Profile = require('../models/Profile');
-const { protect } = require('../middleware/auth');
+import express, { Request, Response, Router } from 'express';
+import User, { IUser } from '../models/User';
+import Profile from '../models/Profile';
+import { protect } from '../middleware/auth';
+
+const router: Router = express.Router();
+
+// Extend Express Request interface
+interface AuthRequest extends Request {
+  user?: IUser;
+}
+
+// Interface for update fields
+interface UserUpdateFields {
+  name?: string;
+  email?: string;
+  interestedIn?: string[];
+}
 
 // @route   PUT /api/users/me
 // @desc    Update user information
 // @access  Private
-router.put('/me', protect, async (req, res) => {
+router.put('/me', protect, async (req: AuthRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated'
+      });
+    }
+    
     const { name, email, interestedIn } = req.body;
 
     // Build update object
-    const updateFields = {};
+    const updateFields: UserUpdateFields = {};
     if (name) updateFields.name = name;
     if (email) updateFields.email = email;
     if (interestedIn) updateFields.interestedIn = interestedIn;
@@ -35,12 +55,13 @@ router.put('/me', protect, async (req, res) => {
       success: true,
       user
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Update user error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     res.status(500).json({ 
       success: false, 
       message: 'Server error', 
-      error: error.message 
+      error: errorMessage 
     });
   }
 });
@@ -48,7 +69,7 @@ router.put('/me', protect, async (req, res) => {
 // @route   GET /api/users/:id
 // @desc    Get user by ID (with basic profile info)
 // @access  Private
-router.get('/:id', protect, async (req, res) => {
+router.get('/:id', protect, async (req: Request, res: Response) => {
   try {
     const user = await User.findById(req.params.id).select('-password');
     
@@ -72,12 +93,13 @@ router.get('/:id', protect, async (req, res) => {
         profile: profile || null
       }
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Get user error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     res.status(500).json({ 
       success: false, 
       message: 'Server error', 
-      error: error.message 
+      error: errorMessage 
     });
   }
 });
@@ -85,8 +107,15 @@ router.get('/:id', protect, async (req, res) => {
 // @route   PUT /api/users/password
 // @desc    Update user password
 // @access  Private
-router.put('/password', protect, async (req, res) => {
+router.put('/password', protect, async (req: AuthRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated'
+      });
+    }
+    
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
@@ -98,6 +127,13 @@ router.put('/password', protect, async (req, res) => {
 
     // Get user with password
     const user = await User.findById(req.user._id);
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
 
     // Check current password
     const isMatch = await user.matchPassword(currentPassword);
@@ -116,12 +152,13 @@ router.put('/password', protect, async (req, res) => {
       success: true,
       message: 'Password updated successfully'
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Update password error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     res.status(500).json({ 
       success: false, 
       message: 'Server error', 
-      error: error.message 
+      error: errorMessage 
     });
   }
 });
@@ -129,8 +166,15 @@ router.put('/password', protect, async (req, res) => {
 // @route   DELETE /api/users/me
 // @desc    Delete user account
 // @access  Private
-router.delete('/me', protect, async (req, res) => {
+router.delete('/me', protect, async (req: AuthRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated'
+      });
+    }
+    
     // Delete user's profile
     await Profile.findOneAndDelete({ user: req.user._id });
     
@@ -141,14 +185,15 @@ router.delete('/me', protect, async (req, res) => {
       success: true,
       message: 'User account deleted successfully'
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Delete account error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     res.status(500).json({ 
       success: false, 
       message: 'Server error', 
-      error: error.message 
+      error: errorMessage 
     });
   }
 });
 
-module.exports = router;
+export default router;

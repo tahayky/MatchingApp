@@ -1,6 +1,21 @@
-const mongoose = require('mongoose');
+import mongoose, { Schema, Document, Model } from 'mongoose';
 
-const MatchSchema = new mongoose.Schema({
+// Define action type
+export type MatchAction = 'like' | 'pass';
+
+// Define Match interface
+export interface IMatch extends Document {
+  user: mongoose.Types.ObjectId;
+  targetUser: mongoose.Types.ObjectId;
+  action: MatchAction;
+  isMatch: boolean;
+  matchedAt?: Date;
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const MatchSchema: Schema = new Schema({
   // The user who initiated the action (like/dislike)
   user: {
     type: mongoose.Schema.Types.ObjectId,
@@ -38,4 +53,6 @@ const MatchSchema = new mongoose.Schema({
 // Make sure we don't have duplicate entries for the same user pair and action
 MatchSchema.index({ user: 1, targetUser: 1 }, { unique: true });
 
-module.exports = mongoose.model('Match', MatchSchema);
+// Create and export the Match model
+const Match: Model<IMatch> = mongoose.model<IMatch>('Match', MatchSchema);
+export default Match;

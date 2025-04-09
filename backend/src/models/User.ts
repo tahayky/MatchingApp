@@ -1,7 +1,25 @@
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+import mongoose, { Schema, Document, Model } from 'mongoose';
+import bcrypt from 'bcryptjs';
 
-const UserSchema = new mongoose.Schema({
+// Define types
+export type Gender = 'male' | 'female' | 'other';
+
+// Define interfaces
+export interface IUser extends Document {
+  email: string;
+  password: string;
+  name: string;
+  dateOfBirth: Date;
+  gender: Gender;
+  interestedIn: Gender[];
+  isProfileComplete: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  matchPassword(enteredPassword: string): Promise<boolean>;
+}
+
+// Create the schema
+const UserSchema: Schema = new Schema({
   email: {
     type: String,
     required: true,
@@ -43,8 +61,8 @@ const UserSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-// Hash password before saving
-UserSchema.pre('save', async function(next) {
+// Define the this-context for pre hooks with proper typing
+UserSchema.pre<IUser>('save', async function(next) {
   if (!this.isModified('password')) return next();
   
   try {
@@ -52,13 +70,15 @@ UserSchema.pre('save', async function(next) {
     this.password = await bcrypt.hash(this.password, salt);
     next();
   } catch (error) {
-    next(error);
+    next(error as Error);
   }
 });
 
 // Method to check password
-UserSchema.methods.matchPassword = async function(enteredPassword) {
+UserSchema.methods.matchPassword = async function(enteredPassword: string): Promise<boolean> {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
-module.exports = mongoose.model('User', UserSchema);
+// Create and export the User model
+const User: Model<IUser> = mongoose.model<IUser>('User', UserSchema);
+export default User;

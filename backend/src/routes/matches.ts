@@ -42,6 +42,8 @@ router.post('/action', protect, async (req, res) => {
       });
     }
 
+    // MongoDB ObjectId validation
+
     // TEST PROFİL ID KONTROLÜ - Eğer geçerli bir MongoDB ObjectID değilse, test ID'si olarak kabul et
     if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
       console.log(`[DEBUG] Invalid ObjectID: ${targetUserId}, handling as test profile ID`);
@@ -193,6 +195,36 @@ router.post('/action', protect, async (req, res) => {
       console.log(`[DEBUG] Updated likedBy array:`, JSON.stringify(savedProfile.likedBy || [], null, 2));
     } else {
       console.log(`[DEBUG] Profile ${currentUserProfile._id} already in likedBy array of profile ${targetProfile._id}`);
+    }
+  } else if (action === 'pass') {
+    // If it's a pass action, add the target profile to user's rejected list
+    console.log(`[DEBUG] Processing pass action - adding to rejected list`);
+    
+    // Check if profile is already in the rejected array
+    const alreadyRejected = currentUserProfile.rejected && currentUserProfile.rejected.some(
+      rejection => rejection.profile && rejection.profile.toString() === targetProfile._id.toString()
+    );
+    
+    if (!alreadyRejected) {
+      // Initialize rejected array if it doesn't exist
+      if (!currentUserProfile.rejected) {
+        currentUserProfile.rejected = [];
+      }
+      
+      // Add to rejected array
+      currentUserProfile.rejected.push({
+        profile: targetProfile._id,
+        rejectedAt: new Date()
+      });
+      
+      // Save the updated profile
+      const savedProfile = await currentUserProfile.save();
+      console.log(`[DEBUG] Added profile ${targetProfile._id} to rejected array of user ${currentUserProfile._id}`);
+      
+      // Log the number of rejected profiles
+      console.log(`[DEBUG] User now has ${savedProfile.rejected.length} rejected profiles`);
+    } else {
+      console.log(`[DEBUG] Profile ${targetProfile._id} already in rejected array of user ${currentUserProfile._id}`);
     }
   }
       

@@ -119,6 +119,8 @@ export default function RegisterScreen() {
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry
+                autoComplete="off"
+                textContentType="none"
               />
             </ThemedView>
             
@@ -130,6 +132,8 @@ export default function RegisterScreen() {
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 secureTextEntry
+                autoComplete="off"
+                textContentType="none"
               />
             </ThemedView>
             

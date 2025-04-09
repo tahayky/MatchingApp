@@ -1,12 +1,23 @@
-const express = require('express');
-const router = express.Router();
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
-const { protect } = require('../middleware/auth');
+import express, { Request, Response, Router } from 'express';
+import jwt from 'jsonwebtoken';
+import User, { IUser } from '../models/User';
+import { protect } from '../middleware/auth';
+
+const router: Router = express.Router();
+
+// Extend Express Request interface
+interface AuthRequest extends Request {
+  user?: IUser;
+}
 
 // Generate JWT token
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
+const generateToken = (id: string): string => {
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    throw new Error('JWT_SECRET is not defined in environment variables');
+  }
+  
+  return jwt.sign({ id }, jwtSecret, {
     expiresIn: '30d'
   });
 };
@@ -14,7 +25,7 @@ const generateToken = (id) => {
 // @route   POST /api/auth/register
 // @desc    Register a new user
 // @access  Public
-router.post('/register', async (req, res) => {
+router.post('/register', async (req: Request, res: Response) => {
   try {
     const { email, password, name, dateOfBirth, gender, interestedIn } = req.body;
 
@@ -54,12 +65,13 @@ router.post('/register', async (req, res) => {
         message: 'Invalid user data' 
       });
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Registration error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     res.status(500).json({ 
       success: false, 
       message: 'Server error', 
-      error: error.message 
+      error: errorMessage 
     });
   }
 });
@@ -67,7 +79,7 @@ router.post('/register', async (req, res) => {
 // @route   POST /api/auth/login
 // @desc    Authenticate user & get token
 // @access  Public
-router.post('/login', async (req, res) => {
+router.post('/login', async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
 
@@ -93,12 +105,13 @@ router.post('/login', async (req, res) => {
         message: 'Invalid email or password' 
       });
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Login error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     res.status(500).json({ 
       success: false, 
       message: 'Server error', 
-      error: error.message 
+      error: errorMessage 
     });
   }
 });
@@ -106,22 +119,30 @@ router.post('/login', async (req, res) => {
 // @route   GET /api/auth/me
 // @desc    Get current user profile
 // @access  Private
-router.get('/me', protect, async (req, res) => {
+router.get('/me', protect, async (req: AuthRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authorized, user not found'
+      });
+    }
+    
     const user = await User.findById(req.user._id).select('-password');
     
     res.json({
       success: true,
       user
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Get user error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     res.status(500).json({ 
       success: false, 
       message: 'Server error', 
-      error: error.message 
+      error: errorMessage 
     });
   }
 });
 
-module.exports = router;
+export default router;

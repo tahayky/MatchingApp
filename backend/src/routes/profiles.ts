@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const Profile = require('../models/Profile');
 const User = require('../models/User');
+const Match = require('../models/Match');
 const { protect } = require('../middleware/auth');
 
 // Configure multer for file uploads
@@ -380,6 +381,42 @@ router.get('/discover', protect, async (req, res) => {
     
     console.log(`[DEBUG] Querying profiles with filters: ${JSON.stringify(query)}`);
     
+    // Get profiles to exclude: both rejected and liked profiles
+    const profilesToExclude = [];
+    
+    // Add rejected profiles to exclude list
+    if (userProfile.rejected && userProfile.rejected.length > 0) {
+      userProfile.rejected.forEach(rejection => {
+        profilesToExclude.push(rejection.profile);
+      });
+      console.log(`[DEBUG] User has rejected ${userProfile.rejected.length} profiles`);
+    }
+    
+    // Find already liked profiles from Match collection
+    const likedMatches = await Match.find({
+      user: req.user._id,
+      action: 'like'
+    });
+    
+    if (likedMatches.length > 0) {
+      // Get the profiles associated with these liked users
+      const likedUserIds = likedMatches.map(match => match.targetUser);
+      const likedProfiles = await Profile.find({ user: { $in: likedUserIds } }).select('_id');
+      
+      // Add these profile IDs to the exclude list
+      likedProfiles.forEach(profile => {
+        profilesToExclude.push(profile._id);
+      });
+      
+      console.log(`[DEBUG] User has liked ${likedProfiles.length} profiles`);
+    }
+    
+    // Apply the exclusion filter
+    if (profilesToExclude.length > 0) {
+      console.log(`[DEBUG] Total ${profilesToExclude.length} profiles will be excluded (rejected + liked)`);
+      query._id = { $nin: profilesToExclude };
+    }
+    
     // Find profiles with pagination (limit to 20)
     const profiles = await Profile.find(query)
       .populate({
@@ -388,7 +425,7 @@ router.get('/discover', protect, async (req, res) => {
       })
       .limit(20);
     
-    console.log(`[DEBUG] Found ${profiles.length} profiles matching criteria`);
+    console.log(`[DEBUG] Found ${profiles.length} profiles matching criteria (after excluding rejected)`);
     
     // Verify all returned profiles have users with matching genders
     for (const profile of profiles) {

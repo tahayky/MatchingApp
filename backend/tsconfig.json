@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "commonjs",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,                 // Full strict mode enabled
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "allowJs": true,                // Allow JavaScript files
+    "checkJs": false,               // Don't type check JavaScript files
+    "strictBindCallApply": true,    // Check 'bind', 'call', and 'apply' methods
+    "strictFunctionTypes": true,    // Enable strict checking of function types
+    "strictPropertyInitialization": true, // Ensure non-undefined properties are initialized
+    "alwaysStrict": true,           // Parse in strict mode
+    "noImplicitThis": true,         // Raise error on 'this' with implicit 'any'
+    "isolatedModules": true         // Treat each file as a separate module
+  },
+  "include": ["src/**/*", "src/__tests__/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
