@@ -217,8 +217,24 @@ export default function HomeScreen() {
         // Başarılı like ama henüz eşleşme yok
         console.log(`${profile.name} beğenildi, ancak henüz eşleşme yok`);
       } else {
-        // Başarısız API yanıtı ama hatalar kullanıcıya yansıtılmamalı
-        console.log(`API yanıtı başarısız ama kullanıcı deneyimi devam ediyor.`);
+        // Başarısız API yanıtı - Beğeni hakkı bitti veya başka bir hata
+        console.log(`API yanıtı başarısız: ${response.message || 'Bilinmeyen hata'}`);
+        
+        // Kullanıcıya beğeni kotasının bittiğini bildir
+        Alert.alert(
+          "Beğeni Kotanız Doldu",
+          response.message || "Günlük beğeni hakkınız doldu. Daha fazla kart beğenmek için premium'a yükseltin veya yarın tekrar deneyin.",
+          [
+            { text: "Tamam", style: "cancel" },
+            { 
+              text: "Premium'a Yükselt", 
+              onPress: () => {
+                console.log("Subscription ekranına yönlendiriliyor");
+                // Burada abonelik ekranına yönlendirme kodu eklenebilir
+              }
+            }
+          ]
+        );
       }
     } catch (error) {
       // Ciddi hata - bu API isteğinin tamamen başarısız olduğu anlamına gelir

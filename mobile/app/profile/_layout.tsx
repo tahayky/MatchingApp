@@ -10,6 +10,20 @@ export default function ProfileLayout() {
           headerShown: false
         }} 
       />
+      <Stack.Screen 
+        name="settings" 
+        options={{ 
+          title: 'Settings',
+          headerShown: false
+        }} 
+      />
+      <Stack.Screen 
+        name="subscription" 
+        options={{ 
+          title: 'Subscription',
+          headerShown: false
+        }} 
+      />
     </Stack>
   );
 }

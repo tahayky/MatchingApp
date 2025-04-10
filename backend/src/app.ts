@@ -10,6 +10,7 @@ import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import profilesRoutes from './routes/profiles-ts';
 import matchesRoutes from './routes/matches-ts';
+import subscriptionRoutes from './routes/subscription';
 
 // Import Swagger documentation
 import { setupSwagger } from './swagger';
@@ -28,9 +29,10 @@ const app: Application = express();
 
 // Configure middleware
 app.use(cors({
-  origin: '*',
+  origin: 'http://localhost:3001',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -52,17 +54,30 @@ app.use('/api/health', healthCheckRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 
+// Explicitly register subscription routes
+console.log('Registering subscription routes...');
+app.use('/api/subscription', subscriptionRoutes);
+
 // Keep TypeScript test endpoints for development and testing 
 app.use('/api/profiles/test', profilesRoutes);
 app.use('/api/matches/test', matchesRoutes);
 
-// Use JS implementations for now, for complete functionality
-// We could gradually convert these to TypeScript when time permits
-const profilesJS = require('../routes/profiles');
-const matchesJS = require('../routes/matches');
+// Use TypeScript implementations for all routes
+app.use('/api/profiles', profilesRoutes);
+app.use('/api/matches', matchesRoutes);
 
-app.use('/api/profiles', profilesJS);
-app.use('/api/matches', matchesJS);
+// Log available routes for debugging
+app._router.stack.forEach(function(r: any) {
+  if (r.route && r.route.path) {
+    console.log(`Route registered: ${r.route.path}`);
+  } else if (r.name === 'router') {
+    r.handle.stack.forEach(function(layer: any) {
+      if (layer.route) {
+        console.log(`Sub-route: ${layer.route.path}`);
+      }
+    });
+  }
+});
 
 // Setup Swagger documentation
 setupSwagger(app);

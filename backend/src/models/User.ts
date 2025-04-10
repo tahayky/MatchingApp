@@ -13,6 +13,14 @@ export interface IUser extends Document {
   gender: Gender;
   interestedIn: Gender[];
   isProfileComplete: boolean;
+  // Subscription and quota fields
+  subscriptionTier: string;
+  subscriptionExpiresAt?: Date; 
+  dailyLikeQuota: number;
+  remainingLikes: number;
+  likesResetTime: Date;
+  // Admin and role management
+  isAdmin: boolean;
   createdAt: Date;
   updatedAt: Date;
   matchPassword(enteredPassword: string): Promise<boolean>;
@@ -54,6 +62,39 @@ const UserSchema: Schema = new Schema({
   isProfileComplete: {
     type: Boolean,
     default: false
+  },
+  // Subscription and quota fields
+  subscriptionTier: {
+    type: String,
+    default: 'FREE' // Default to free tier
+  },
+  subscriptionExpiresAt: {
+    type: Date,
+    default: null // Only set for paid subscriptions
+  },
+  dailyLikeQuota: {
+    type: Number,
+    default: 5 // Default number of likes per day (FREE tier) - Updated to match subscriptionTiers.ts
+  },
+  remainingLikes: {
+    type: Number,
+    default: 5 // Start with full quota - Updated to match quota
+  },
+  likesResetTime: {
+    type: Date,
+    default: () => {
+      const now = new Date();
+      // Set reset time to midnight tomorrow
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(0, 0, 0, 0);
+      return tomorrow;
+    }
+  },
+  // Admin role
+  isAdmin: {
+    type: Boolean,
+    default: false // Users are not admins by default
   },
   createdAt: {
     type: Date,

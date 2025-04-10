@@ -4,6 +4,9 @@ import Match, { IMatch, MatchAction } from '../models/Match';
 import Profile, { IProfile, IPhoto } from '../models/Profile';
 import User, { IUser } from '../models/User';
 import { protect } from '../middleware/auth';
+import { isAdmin } from '../middleware/admin';
+import axios from 'axios';
+import { checkAndResetQuota } from './subscription';
 
 // Extend Express Request interface
 interface AuthRequest extends Request {
@@ -17,7 +20,13 @@ const router: Router = express.Router();
 // @desc    Register an action (like or pass)
 // @access  Private
 router.post('/action', protect, async (req: AuthRequest, res: Response) => {
-  console.log('Received action request:', req.body);
+  console.log('==================================================');
+  console.log(`ACTION REQUEST - ${new Date().toISOString()}`);
+  console.log('User:', req.user?._id);
+  console.log('Request:', req.body);
+  console.log('User remaining likes BEFORE:', req.user?.remainingLikes);
+  console.log('User dailyLikeQuota:', req.user?.dailyLikeQuota);
+  console.log('==================================================');
   
   try {
     if (!req.user || !req.user._id) {
@@ -44,6 +53,26 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
       });
     }
 
+    // Only check quota for like actions
+    if (action === 'like') {
+      // Check quota using the centralized function
+      await checkAndResetQuota(req.user);
+      
+      // Check if user has remaining likes
+      if (req.user.remainingLikes <= 0) {
+        console.log('User has NO remaining likes, returning error');
+        return res.status(403).json({
+          success: false,
+          message: 'Daily like quota exceeded. Try again tomorrow.',
+          quotaInfo: {
+            remaining: 0,
+            total: req.user.dailyLikeQuota,
+            resetTime: req.user.likesResetTime
+          }
+        });
+      }
+    }
+
     // Make sure user isn't acting on their own profile
     if (targetUserId === req.user._id.toString()) {
       return res.status(400).json({
@@ -55,8 +84,41 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
     // MongoDB ObjectId validation - Check if it's a valid ID
     if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
       console.log(`[DEBUG] Invalid ObjectID: ${targetUserId}, handling as test profile ID`);
-      // This is a test profile ID, we don't create a real match
-      // But we can return a successful response (to keep frontend flow)
+      
+      // Even for test profiles, we should decrement the like quota through the centralized endpoint
+      if (action === 'like') {
+        try {
+          // Call consume-like endpoint
+          const result = await axios.post('http://localhost:3000/api/subscription/consume-like', {}, {
+            headers: {
+              'Authorization': req.headers.authorization || ''
+            }
+          });
+          
+          console.log(`[TEST PROFILE] Quota endpoint consumed a like, remaining: ${result.data.quotaInfo.remaining}`);
+          
+          return res.json({
+            success: true,
+            match: {
+              targetUser: targetUserId,
+              action,
+              isMatch: false // No real match with test IDs
+            },
+            quotaInfo: result.data.quotaInfo
+          });
+        } catch (error) {
+          console.error('Error consuming like for test profile:', error);
+          
+          // If API fails, return error
+          return res.status(500).json({
+            success: false,
+            message: 'Error processing like action',
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
+      
+      // For pass actions on test profiles, just return success without quota info
       return res.json({
         success: true,
         match: {
@@ -149,10 +211,20 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
     if (existingMatch) {
       // If the action hasn't changed, just return the existing match
       if (existingMatch.action === action) {
+        console.log(`[ACTION ALREADY EXISTS] Action ${action} already registered, not changing quota`);
+        
+        // Even though it's the same action, still return quota info
+        let quotaInfo = {
+          remaining: req.user.remainingLikes,
+          total: req.user.dailyLikeQuota,
+          resetTime: req.user.likesResetTime
+        };
+        
         return res.json({
           success: true,
           match: existingMatch,
-          message: `Action ${action} was already registered`
+          message: `Action ${action} was already registered`,
+          quotaInfo
         });
       }
 
@@ -208,12 +280,34 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
           await targetProfile.save();
         }
 
+        // CRITICAL PART: Consume a like through centralized API
+        let quotaInfo;
+        try {
+          // Call consume-like endpoint
+          const result = await axios.post('http://localhost:3000/api/subscription/consume-like', {}, {
+            headers: {
+              'Authorization': req.headers.authorization || ''
+            }
+          });
+          
+          console.log(`[MUTUAL MATCH] Quota endpoint consumed a like, remaining: ${result.data.quotaInfo.remaining}`);
+          quotaInfo = result.data.quotaInfo;
+        } catch (error) {
+          console.error('Error consuming like for mutual match:', error);
+          return res.status(500).json({
+            success: false,
+            message: 'Error processing like action',
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+
         // Return the successful match
         return res.json({
           success: true,
           match: actionResult,
           isNewMatch: true,
-          message: "It's a match!"
+          message: "It's a match!",
+          quotaInfo
         });
       } else {
         // This is just a one-way like for now
@@ -247,11 +341,41 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
       }
     }
 
-    res.json({
-      success: true,
-      match: actionResult,
-      message: `Action ${action} registered successfully`
-    });
+    // For likes, consume a like through the centralized API
+    if (action === 'like') {
+      try {
+        // Call consume-like endpoint
+        const result = await axios.post('http://localhost:3000/api/subscription/consume-like', {}, {
+          headers: {
+            'Authorization': req.headers.authorization || ''
+          }
+        });
+        
+        console.log(`[REGULAR LIKE] Quota endpoint consumed a like, remaining: ${result.data.quotaInfo.remaining}`);
+        
+        // Return success with quota info from API response
+        return res.json({
+          success: true,
+          match: actionResult,
+          message: `Action ${action} registered successfully`,
+          quotaInfo: result.data.quotaInfo
+        });
+      } catch (error) {
+        console.error('Error consuming like:', error);
+        return res.status(500).json({
+          success: false,
+          message: 'Error processing like action',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    } else {
+      // For pass actions, just return success
+      return res.json({
+        success: true,
+        match: actionResult,
+        message: `Action ${action} registered successfully`
+      });
+    }
   } catch (error: unknown) {
     console.error('Match action error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -519,6 +643,141 @@ router.get('/likes', protect, async (req: AuthRequest, res: Response) => {
     res.status(500).json({
       success: false,
       message: 'Server error while fetching likes',
+      error: errorMessage
+    });
+  }
+});
+
+// @route   GET /api/matches/quota
+// @desc    Get the user's current like quota status
+// @access  Private
+router.get('/quota', protect, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authorized, user not found'
+      });
+    }
+
+    // Update quota using the centralized method
+    await checkAndResetQuota(req.user);
+
+    // Calculate time until reset for client
+    const now = new Date();
+    const timeUntilReset = req.user.likesResetTime.getTime() - now.getTime();
+    const hoursUntilReset = Math.floor(timeUntilReset / (1000 * 60 * 60));
+    const minutesUntilReset = Math.floor((timeUntilReset % (1000 * 60 * 60)) / (1000 * 60));
+
+    return res.json({
+      success: true,
+      quotaInfo: {
+        remaining: req.user.remainingLikes,
+        total: req.user.dailyLikeQuota,
+        resetTime: req.user.likesResetTime,
+        timeUntilReset: {
+          hours: hoursUntilReset,
+          minutes: minutesUntilReset,
+          milliseconds: timeUntilReset
+        }
+      }
+    });
+  } catch (error: unknown) {
+    console.error('Get quota error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    return res.status(500).json({
+      success: false,
+      message: 'Server error while fetching quota information',
+      error: errorMessage
+    });
+  }
+});
+
+// @route   PUT /api/matches/admin/quota/:userId
+// @desc    Update a user's like quota (admin only)
+// @access  Admin
+router.put('/admin/quota/:userId', protect, isAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { dailyLikeQuota, remainingLikes, resetNow } = req.body;
+
+    // Validate userId
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
+      });
+    }
+
+    // Find the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Update quota settings
+    if (dailyLikeQuota !== undefined) {
+      if (typeof dailyLikeQuota !== 'number' || dailyLikeQuota < 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Daily like quota must be a non-negative number'
+        });
+      }
+      user.dailyLikeQuota = dailyLikeQuota;
+      
+      // If the daily quota is reduced below the remaining likes, adjust remaining likes
+      if (user.remainingLikes > dailyLikeQuota) {
+        user.remainingLikes = dailyLikeQuota;
+      }
+    }
+
+    // Update remaining likes 
+    if (remainingLikes !== undefined) {
+      if (typeof remainingLikes !== 'number' || remainingLikes < 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Remaining likes must be a non-negative number'
+        });
+      }
+      
+      // Don't allow setting remaining likes higher than daily quota
+      user.remainingLikes = Math.min(remainingLikes, user.dailyLikeQuota);
+    }
+
+    // Reset quota timer if requested
+    if (resetNow) {
+      const now = new Date();
+      user.likesResetTime = new Date(now);
+      user.likesResetTime.setDate(user.likesResetTime.getDate() + 1);
+      user.likesResetTime.setHours(0, 0, 0, 0);
+    }
+
+    // Save the updated user
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: 'User quota settings updated successfully',
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        quotaInfo: {
+          dailyLikeQuota: user.dailyLikeQuota,
+          remainingLikes: user.remainingLikes,
+          resetTime: user.likesResetTime
+        }
+      }
+    });
+  } catch (error: unknown) {
+    console.error('Admin quota update error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    return res.status(500).json({
+      success: false,
+      message: 'Server error while updating quota settings',
       error: errorMessage
     });
   }

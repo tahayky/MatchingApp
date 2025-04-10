@@ -11,7 +11,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
-import { authService, profileService } from '@/services';
+import { authService, profileService, subscriptionService } from '@/services';
 import apiClient, { setUseDeviceUrl, setCustomDeviceUrl } from '@/services/apiClient';
 
 export default function ProfileScreen() {
@@ -19,6 +19,8 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
+  const [quotaInfo, setQuotaInfo] = useState<any>(null);
+  const [subscriptionTier, setSubscriptionTier] = useState<string>('FREE');
 
   const [authenticated, setAuthenticated] = useState<boolean>(false);
 
@@ -82,6 +84,23 @@ export default function ProfileScreen() {
         // Profile might not exist yet, that's ok
         console.log('Profile not found, may need to be created (sessiz)');
       }
+      
+      // Get subscription data
+      try {
+        const subscriptionResponse = await subscriptionService.getSubscriptionStatus();
+        if (subscriptionResponse.success && subscriptionResponse.subscription) {
+          setSubscriptionTier(subscriptionResponse.subscription.tier);
+          setQuotaInfo(subscriptionResponse.subscription.quotaInfo);
+        }
+        
+        // Get the most current quota info
+        const quotaResponse = await subscriptionService.getLikeQuota();
+        if (quotaResponse.success && quotaResponse.quotaInfo) {
+          setQuotaInfo(quotaResponse.quotaInfo);
+        }
+      } catch (error) {
+        console.log('Abonelik bilgisi alınamadı (sessiz)');
+      }
     } catch (error) {
       console.log('Kullanıcı verisi yükleme hatası (sessiz)');
       // Müşteriye hata mesajı gösterme, sadece iç log tutma
@@ -136,6 +155,60 @@ export default function ProfileScreen() {
                 <ThemedText style={styles.bio}>{profile.bio}</ThemedText>
               )}
             </ThemedView>
+          </ThemedView>
+          
+          {/* Subscription Info Card */}
+          <ThemedView style={styles.subscriptionCard}>
+            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Abonelik Durumu</ThemedText>
+            <ThemedView style={styles.detailRow}>
+              <ThemedText style={styles.detailLabel}>Paket:</ThemedText>
+              <ThemedView style={[
+                styles.tierBadge,
+                subscriptionTier === 'PREMIUM' ? styles.premiumBadge : 
+                subscriptionTier === 'PLUS' ? styles.plusBadge : styles.freeBadge
+              ]}>
+                <ThemedText style={styles.tierText}>{subscriptionTier}</ThemedText>
+              </ThemedView>
+            </ThemedView>
+            
+            {quotaInfo && (
+              <ThemedView>
+                <ThemedView style={styles.detailRow}>
+                  <ThemedText style={styles.detailLabel}>Beğeni Hakkı:</ThemedText>
+                  <ThemedText>{quotaInfo.remaining} / {quotaInfo.total}</ThemedText>
+                </ThemedView>
+                
+                <ThemedView style={styles.quotaBarContainer}>
+                  <ThemedView 
+                    style={[
+                      styles.quotaBar, 
+                      { 
+                        width: `${(quotaInfo.remaining / quotaInfo.total) * 100}%`,
+                        backgroundColor: quotaInfo.remaining > quotaInfo.total / 2 ? '#4CAF50' : 
+                                        quotaInfo.remaining > quotaInfo.total / 5 ? '#FFC107' : '#F44336'
+                      }
+                    ]} 
+                  />
+                </ThemedView>
+                
+                <ThemedText style={styles.quotaReset}>
+                  Yenileme: {subscriptionService.formatTimeUntilReset(quotaInfo)}
+                </ThemedText>
+              </ThemedView>
+            )}
+            
+            <TouchableOpacity 
+              style={[
+                styles.button, 
+                styles.subscriptionButton,
+                { backgroundColor: subscriptionTier === 'FREE' ? '#673AB7' : '#2196F3' }
+              ]}
+              onPress={() => router.push('/profile/subscription')}
+            >
+              <ThemedText style={styles.buttonText}>
+                {subscriptionTier === 'FREE' ? 'Premium\'a Yükselt' : 'Aboneliği Yönet'}
+              </ThemedText>
+            </TouchableOpacity>
           </ThemedView>
           
           {profile && (
@@ -262,6 +335,53 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontStyle: 'italic',
   },
+  // Subscription styles
+  subscriptionCard: {
+    marginVertical: 16,
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+  },
+  tierBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    alignSelf: 'flex-start',
+  },
+  premiumBadge: {
+    backgroundColor: '#673AB7', // Purple for premium
+  },
+  plusBadge: {
+    backgroundColor: '#2196F3', // Blue for plus
+  },
+  freeBadge: {
+    backgroundColor: '#4CAF50', // Green for free
+  },
+  tierText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  quotaBarContainer: {
+    height: 10,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 5,
+    overflow: 'hidden',
+    marginVertical: 8,
+  },
+  quotaBar: {
+    height: '100%',
+    borderRadius: 5,
+  },
+  quotaReset: {
+    fontSize: 12,
+    opacity: 0.6,
+    textAlign: 'right',
+    marginBottom: 8,
+  },
+  subscriptionButton: {
+    marginTop: 12,
+  },
+  // Profile detail styles
   detailsCard: {
     marginVertical: 16,
     padding: 16,

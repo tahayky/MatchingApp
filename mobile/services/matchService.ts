@@ -27,6 +27,11 @@ interface MatchActionResponse {
     isMatch: boolean;
   };
   message?: string; // Optional message from backend
+  quotaInfo?: {
+    remaining: number;
+    total: number;
+    resetTime: string;
+  };
 }
 export interface MatchProfile {
   matchId: string;

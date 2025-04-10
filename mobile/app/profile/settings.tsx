@@ -80,6 +80,18 @@ export default function SettingsScreen() {
         
         <ThemedView style={styles.settingsCard}>
           <ThemedView style={styles.settingSection}>
+            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Abonelik Ayarları</ThemedText>
+            
+            <TouchableOpacity 
+              style={styles.settingButton} 
+              onPress={() => router.push({ pathname: '/profile/subscription' } as any)}
+            >
+              <ThemedText>Premium Abonelik</ThemedText>
+              <ThemedText style={styles.settingDescription}>Daha fazla beğeni hakkı kazanın</ThemedText>
+            </TouchableOpacity>
+          </ThemedView>
+          
+          <ThemedView style={styles.settingSection}>
             <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Görünüm Ayarları</ThemedText>
             
             <ThemedView style={styles.settingRow}>
