@@ -4,6 +4,7 @@ import { Platform, ActivityIndicator, View } from 'react-native';
 
 import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import { GenieLampIcon } from '@/components/ui/GenieLampIcon';
 import TabBarBackground from '@/components/ui/TabBarBackground';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -68,40 +69,50 @@ export default function TabLayout() {
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarBackground: TabBarBackground,
+        tabBarShowLabel: false, // Remove tab labels, show only icons
         tabBarStyle: Platform.select({
           ios: {
             // Use a transparent background on iOS to show the blur effect
             position: 'absolute',
+            height: 100,
+            paddingTop: 10,
+            paddingBottom: 40,
+            bottom: 0,
           },
-          default: {},
+          default: {
+            height: 100,
+            paddingTop: 10,
+            paddingBottom: 40,
+            marginBottom: 0,
+          },
         }),
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Discovery',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="flame.fill" color={color} />,
+          tabBarIcon: ({ color }) => <GenieLampIcon size={44} color={color} />,
         }}
       />
       <Tabs.Screen
         name="messages"
         options={{
           title: 'Messages',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="message.fill" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={44} name="message.fill" color={color} />,
         }}
       />
       <Tabs.Screen
         name="likes"
         options={{
           title: 'Likes',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="heart.fill" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={44} name="heart.fill" color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.fill" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={44} name="person.fill" color={color} />,
         }}
       />
     </Tabs>
