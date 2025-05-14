@@ -1,31 +1,40 @@
-// API URL Yöneticisi
+// API URL Yneticisi
 // Uygulamanın doğru API URL'sine erişebilmesi için bir yardımcı sınıf
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_URL_IOS, API_URL_ANDROID, API_URL_DEVICE, USE_DEVICE_URL } from '@env';
 
-// API URL'leri
+// API URL'leri için değerler (doğrudan .env'den)
 const API_URLS = {
   // iOS Simülatörü için
-  iOS: 'http://localhost:3000/api',
-  
+  iOS: API_URL_IOS,
+
   // Android Emülatörü için
-  android: 'http://10.0.2.2:3000/api',
-  
+  android: API_URL_ANDROID,
+
   // Varsayılan değer
-  default: 'http://localhost:3000/api',
-  
+  default: API_URL_IOS,
+
   // Gerçek cihazda test için
-  device: 'http://192.168.1.105:3000/api'
+  device: API_URL_DEVICE
 };
+
+console.log('Doğrudan env değerleri:', {
+  ENV_IOS_URL: API_URL_IOS,
+  ENV_ANDROID_URL: API_URL_ANDROID,
+  ENV_DEVICE_URL: API_URL_DEVICE,
+  ENV_USE_DEVICE: USE_DEVICE_URL
+});
 
 export class ApiUrlManager {
   private static instance: ApiUrlManager;
-  private _currentUrl: string | null = null;
-  private _useDeviceUrl: boolean = false;
+  private _currentUrl: string = '';
+  private _useDeviceUrl: boolean = USE_DEVICE_URL === 'true';
 
   // Singleton pattern
   private constructor() {
-    this.initializeFromStorage();
+    // Doğrudan .env değerleri kullanılacağı için 
+    // AsyncStorage'dan yüklemeye gerek yok
   }
 
   public static getInstance(): ApiUrlManager {
@@ -35,82 +44,37 @@ export class ApiUrlManager {
     return ApiUrlManager.instance;
   }
 
-  // AsyncStorage'dan verileri yükle
-  private async initializeFromStorage() {
-    try {
-      const useDeviceUrl = await AsyncStorage.getItem('USE_DEVICE_URL');
-      if (useDeviceUrl === 'true') {
-        this._useDeviceUrl = true;
-      }
-      
-      // Custom device URL varsa kullan
-      const customDeviceUrl = await AsyncStorage.getItem('CUSTOM_DEVICE_URL');
-      if (customDeviceUrl) {
-        API_URLS.device = customDeviceUrl;
-      }
-    } catch (error) {
-      console.error('Error loading API URL config from storage:', error);
-    }
-    
-    // URL'yi sıfırla
-    this._currentUrl = null;
-  }
-
-  // Fiziksel cihaz URL'si kullanımını ayarla
-  public async setUseDeviceUrl(use: boolean): Promise<void> {
-    this._useDeviceUrl = use;
-    try {
-      await AsyncStorage.setItem('USE_DEVICE_URL', use ? 'true' : 'false');
-      // URL'yi sıfırla
-      this._currentUrl = null;
-    } catch (error) {
-      console.error('Error saving USE_DEVICE_URL to storage:', error);
-    }
-  }
-
-  // Fiziksel cihaz URL'sini özelleştir
-  public async setCustomDeviceUrl(url: string): Promise<void> {
-    if (!url.endsWith('/api')) {
-      url = url + '/api';
-    }
-    
-    API_URLS.device = url;
-    try {
-      await AsyncStorage.setItem('CUSTOM_DEVICE_URL', url);
-      // URL'yi sıfırla
-      this._currentUrl = null;
-    } catch (error) {
-      console.error('Error saving CUSTOM_DEVICE_URL to storage:', error);
-    }
-  }
-
   // Mevcut API URL'sini hesapla ve döndür
   public getApiUrl(): string {
     // URL zaten hesaplanmışsa, onu döndür
-    if (this._currentUrl) {
+    if (this._currentUrl && this._currentUrl.length > 0) {
       return this._currentUrl;
     }
-    
+
     // Fiziksel cihaz URL'si kullanılsın mı?
     if (this._useDeviceUrl) {
       this._currentUrl = API_URLS.device;
+      console.log('API URL ayarlandı (Device modu: AÇIK):', this._currentUrl);
       return this._currentUrl;
     }
-    
+
     // Platform bazlı URL seçimi
     this._currentUrl = Platform.select({
       ios: API_URLS.iOS,
       android: API_URLS.android,
       default: API_URLS.default
     }) as string;
-    
+
+    console.log('API URL ayarlandı (Platform bazlı):', this._currentUrl);
     return this._currentUrl;
   }
 }
 
 // API URL'sine ulaşmak için kolaylık sağlayıcı
 export const getApiUrl = (): string => {
-  return ApiUrlManager.getInstance().getApiUrl();
+  const url = ApiUrlManager.getInstance().getApiUrl();
+  console.log('👉 API Bağlantı URL:', url);
+  return url;
 };
 
 export default ApiUrlManager.getInstance();
