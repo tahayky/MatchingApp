@@ -1,50 +1,51 @@
-# Welcome to your Expo app 👋
+# React Native Expo (TypeScript) Projesi
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Bu proje React Native Expo ile oluşturulmuş, TypeScript destekli bir mobil uygulamadır.
 
-## Get started
-
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-    npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Kurulum
 
 ```bash
-npm run reset-project
+# Proje bağımlılıklarını yükle
+npm install
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Kullanım
 
-## Learn more
+React Native Expo uygulamasını çalıştırma:
 
-To learn more about developing your project with Expo, look at the following resources:
+```bash
+# Expo Development Server'ı başlat
+npm start
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+# Veya direkt olarak belirli platformları hedefle
+npm run android  # Android için
+npm run ios      # iOS için
+npm run web      # Web için
+```
 
-## Join the community
+## Proje Yapısı
 
-Join our community of developers creating universal apps.
+- `/app` - Expo Router dosyaları ve ekranlar
+- `/assets` - Resimler, fontlar ve diğer statik dosyalar
+- `/components` - React Native komponentleri
+- `/constants` - Sabit değerler ve yapılandırma
+- `/hooks` - React custom hooks
+- `/services` - API istemcileri ve servisler
+- `/types` - TypeScript tip tanımlamaları
+- `/utils` - Yardımcı fonksiyonlar ve araçlar
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Geliştirme Notları
+
+- TypeScript: Proje TypeScript ile yapılandırılmıştır, tüm bileşenler ve servisler için tip tanımlamaları kullanılmalıdır.
+- Expo: En son Expo sürümü (v52) kullanılmaktadır ve Expo Router ile navigasyon yapılandırılmıştır.
+- Modern Expo CLI: Legacy expo-cli yerine modern npx expo CLI kullanılmaktadır (Node 17+ ile uyumlu).
+- API Bağlantısı: Backend API'sine bağlantı için `services` klasöründeki modüller kullanılabilir.
+
+## Faydalı Komutlar
+
+```bash
+# Testleri çalıştır
+npm test
+
+# Linting işlemi çalıştır
+npm run lint
