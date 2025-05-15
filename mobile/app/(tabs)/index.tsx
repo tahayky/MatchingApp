@@ -14,7 +14,7 @@ export default function HomeScreen() {
   const [matches, setMatches] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  
+
   // İlk yüklemede oturum kontrolü - API bağlantısı tekrar etkinleştirildi
   useEffect(() => {
     const checkAuth = async () => {
@@ -22,7 +22,7 @@ export default function HomeScreen() {
         // Kimlik kontrolü
         const authenticated = await authService.isAuthenticated();
         setIsAuthenticated(authenticated);
-        
+
         if (authenticated) {
           // API'den profil getir (test profilleri yedek)
           console.log('Kimlik doğrulandı, API\'den profil getiriliyor...');
@@ -39,22 +39,22 @@ export default function HomeScreen() {
         setLoading(false);
       }
     };
-    
+
     // Yükleme durumunu başlatma
     setLoading(true);
-    
+
     // Kısa bekleme sonrası kimlik doğrulama
     const authTimeout = setTimeout(() => {
       console.log('Kimlik doğrulama ve profil yükleme başlatılıyor');
       checkAuth();
     }, 1000);
-    
+
     // Temizleme fonksiyonu
     return () => {
       clearTimeout(authTimeout);
     };
   }, []);
-  
+
   // ODAKLANMA HOOK'U TAMAMEN DEVRE DIŞI - Sonsuz yükleme döngüsünü önlemek için
   // useFocusEffect(
   //   useCallback(() => {
@@ -65,45 +65,45 @@ export default function HomeScreen() {
 
   // Profil veri durumunu izleyen state
   const [fetchAttempted, setFetchAttempted] = useState<boolean>(false);
-  
+
   // Gerçek API çağrısı yapan fetchProfiles
   const fetchProfiles = async () => {
     try {
       console.log('fetchProfiles çağrıldı - Backend\'den profilleri getirme');
       setLoading(true);
-      
+
       // API'ye sadece bir kez istek yapmak için durumu güncelle
       setFetchAttempted(true);
-      
+
       // API istek limiti (maksimum 5 saniye)
       const timeoutPromise = new Promise<void>((_, reject) => {
         setTimeout(() => reject(new Error('API request timeout')), 5000);
       });
-      
+
       // API isteği gönderiliyor
       console.log('API isteği gönderiliyor: discover profilleri');
       const response = await Promise.race([
         profileService.discoverProfiles(),
         timeoutPromise
       ]) as any;
-      
+
       // API yanıtı inceleniyor
       console.log(`API yanıtı alındı! Başarı: ${response.success}`);
-      
+
       if (response.success && response.profiles?.length > 0) {
         console.log(`API profilleri sayısı: ${response.profiles.length}`);
-        
+
         // İlk profil örneği yazdırılıyor
         console.log('İlk profil örneği:', JSON.stringify(response.profiles[0], null, 2));
-        
+
         // API'den gelen profilleri işle - image kısmını doğru formatta ayarla
         const formattedProfiles: ProfileData[] = response.profiles.map((profile: any) => {
           console.log(`Profil ID: ${profile._id} için kart oluşturuluyor`);
-          
+
           // Fotoğraf kontrolü - daha direkt yaklaşım
           const defaultImage = require('@/assets/images/react-logo.png');
           let profileImage = defaultImage;
-          
+
           // Profil fotoğrafı varsa URI'yi kullan (ancak require formatında ImageSourcePropType olmalı)
           const mainPhoto = profile.photos?.find((photo: any) => photo.isMain);
           if (mainPhoto?.url) {
@@ -112,19 +112,19 @@ export default function HomeScreen() {
           } else {
             console.log(`${profile.user.name} için fotoğraf yok, varsayılan kullanılıyor`);
           }
-          
+
           return {
             id: profile._id,
             name: profile.user.name || "İsimsiz",
             age: calculateAge(profile.user.dateOfBirth),
             image: profileImage, // Düzeltilmiş resim formatı
             bio: profile.bio || 'Bio bilgisi yok',
-            distance: profile.location?.city 
+            distance: profile.location?.city
               ? `${profile.location.city}, ${profile.location.country || ''}`
               : 'Konum bilgisi yok'
           };
         });
-        
+
         // Rasgele sıralama işlemi ekle
         const shuffledProfiles = [...formattedProfiles].sort(() => Math.random() - 0.5);
         setProfiles(shuffledProfiles);
@@ -142,7 +142,7 @@ export default function HomeScreen() {
       setLoading(false);
     }
   };
-  
+
   // API ile eşleşmeleri getirmeyi deneyen fetchMatches
   const fetchMatches = async () => {
     console.log('fetchMatches çağrıldı - API\'den eşleşmeler getiriliyor...');
@@ -151,12 +151,12 @@ export default function HomeScreen() {
       const timeoutPromise = new Promise<void>((_, reject) => {
         setTimeout(() => reject(new Error('API request timeout')), 3000);
       });
-      
+
       const response = await Promise.race([
         matchService.getMatches(),
         timeoutPromise
       ]) as any;
-      
+
       if (response.success) {
         setMatches(response.matches || []);
         console.log(`${response.matches?.length || 0} adet eşleşme API'den başarıyla yüklendi`);
@@ -165,7 +165,7 @@ export default function HomeScreen() {
         setMatches([]);
       }
     } catch (error) {
-      console.log('Eşleşmeleri getirme hatası (sessiz)');
+      console.error('API hatası - eşleşmeler getirilemedi:', error);
       setMatches([]);
     }
   };
@@ -186,21 +186,21 @@ export default function HomeScreen() {
 
   const handleSwipeRight = async (profile: ProfileData) => {
     console.log(`${profile.name} profilini beğeniyorum - API isteği`);
-    
+
     try {
       // API isteği gönder
       const response = await matchService.likeOrPassUser({
         targetUserId: profile.id,
         action: 'like'
       });
-      
+
       console.log(`Beğenme API yanıtı:`, response);
-      
+
       // Eşleşme kontrolü
       if (response.success && response.match.isMatch) {
         // Başarılı eşleşme
         console.log(`🎉 EŞLEŞME OLUŞTU! ${profile.name} ile eşleştiniz!`);
-        
+
         // Eşleşme durumu alert'i
         Alert.alert(
           "It's a Match!",
@@ -210,7 +210,7 @@ export default function HomeScreen() {
             { text: "See Matches", onPress: () => console.log("Navigate to matches") }
           ]
         );
-        
+
         // Eşleşme listesini güncelle
         fetchMatches();
       } else if (response.success) {
@@ -219,15 +219,15 @@ export default function HomeScreen() {
       } else {
         // Başarısız API yanıtı - Beğeni hakkı bitti veya başka bir hata
         console.log(`API yanıtı başarısız: ${response.message || 'Bilinmeyen hata'}`);
-        
+
         // Kullanıcıya beğeni kotasının bittiğini bildir
         Alert.alert(
           "Beğeni Kotanız Doldu",
           response.message || "Günlük beğeni hakkınız doldu. Daha fazla kart beğenmek için premium'a yükseltin veya yarın tekrar deneyin.",
           [
             { text: "Tamam", style: "cancel" },
-            { 
-              text: "Premium'a Yükselt", 
+            {
+              text: "Premium'a Yükselt",
               onPress: () => {
                 console.log("Subscription ekranına yönlendiriliyor");
                 // Burada abonelik ekranına yönlendirme kodu eklenebilir
@@ -252,18 +252,18 @@ export default function HomeScreen() {
       // Bir şey yapma - döngüyü kır
     }
   };
-  
+
   // Helper function to calculate age from date of birth
   const calculateAge = (dob: string): number => {
     const birthDate = new Date(dob);
     const today = new Date();
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
-    
+
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
       age--;
     }
-    
+
     return age;
   };
 
@@ -292,7 +292,7 @@ export default function HomeScreen() {
         <ThemedText type="title">Find Your Match</ThemedText>
         <ThemedText>{matches.length} matches so far</ThemedText>
       </ThemedView>
-      
+
       {loading ? (
         <ActivityIndicator size="large" style={styles.loader} />
       ) : (

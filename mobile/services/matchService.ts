@@ -69,15 +69,14 @@ const matchService = {
     try {
       console.log(`Eşleşme isteği gönderiliyor: POST ${endpointPath}`, params);
 
+      // Check internet connection first
+      const isConnected = await checkInternetConnection();
+      if (!isConnected) {
+        throw new Error('İnternet bağlantısı yok');
+      }
+
       // Make ONE attempt to the correct endpoint
       const response = await apiClient.post<MatchActionResponse>(endpointPath, params);
-
-      // Check backend success status if necessary (optional, depends on backend)
-      // if (!response.data.success) {
-      //   console.warn(`Backend reported failure for ${endpointPath}:`, response.data.message);
-      //   // Consider throwing an error here if backend 'success: false' should be treated as an error
-      //   // throw new Error(response.data.message || 'Backend action failed');
-      // }
 
       console.log(`✅ API yanıtı alındı: ${endpointPath}`, response.data);
       return response.data; // Return the actual data from the backend
@@ -85,26 +84,11 @@ const matchService = {
     } catch (error: any) {
       // Catch errors from the single API call attempt
       console.error(`❌ API isteği başarısız: POST ${endpointPath}`, error.response?.data || error.message || error);
-
-      // IMPORTANT: Re-throw the error or return a rejected Promise
-      // This allows the calling function (HomeScreen) to catch the actual error
-      throw error;
-
-      /*
-      // --- DO NOT DO THIS --- (This is the old incorrect way)
-      // return {
-      //   success: true, // FAKE SUCCESS
-      //   match: {
-      //     targetUser: params.targetUserId,
-      //     action: params.action,
-      //     isMatch: false // FAKE DATA
-      //   }
-      // };
-      */
+      throw error; // Re-throw the error
     }
   },
 
-  // getMatches function remains largely the same, error handling seems acceptable (uses cache)
+  // getMatches function with improved error handling
   async getMatches(): Promise<MatchesResponse> {
     if (!(await isAuthenticated())) {
       return { success: false, matches: [], message: 'User not authenticated' };
@@ -145,19 +129,20 @@ const matchService = {
       return response.data;
 
     } catch (error: any) {
-      console.error('API hatası, önbellekten eşleşmeler yükleniyor...', error.response?.data || error.message || error);
+      console.error('API hatası, önbellekten eşleşmeler yükleniyor...', error);
       const cachedMatches = await matchCache.get();
       if (cachedMatches && cachedMatches.length > 0) {
         console.log(`Önbellekten ${cachedMatches.length} eşleşme yüklendi (API hatası sonrası)`);
         return { success: true, matches: cachedMatches };
       }
+      
       console.error('Eşleşmeleri getirme hatası (önbellek de boş):', error);
       // Ensure a proper failure response is returned
       return { success: false, matches: [], message: 'API error and cache is empty' };
     }
   },
 
-  // unmatch function remains largely the same, error handling returns generic failure
+  // unmatch function with improved error handling
   async unmatch(matchId: string): Promise<{ success: boolean; message: string }> {
     if (!(await isAuthenticated())) {
       return { success: false, message: 'User not authenticated' };
@@ -166,15 +151,25 @@ const matchService = {
     const endpointPath = `/matches/${matchId}`; // Correct endpoint
 
     try {
+      // Check internet connection first
+      const isConnected = await checkInternetConnection();
+      if (!isConnected) {
+        return { 
+          success: false, 
+          message: 'İnternet bağlantısı yok, eşleşme silinemiyor' 
+        };
+      }
+
       console.log(`Eşleşme silme isteği: DELETE ${endpointPath}`);
       const response = await apiClient.delete(endpointPath);
       console.log(`✅ Eşleşme silme başarılı: ${endpointPath}`, response.data);
       return response.data;
     } catch (error: any) {
       console.error(`❌ Eşleşme silme hatası: DELETE ${endpointPath}`, error.response?.data || error.message || error);
-      // Re-throwing might be better, but returning generic failure is also an option
-      // throw error;
-      return { success: false, message: error.response?.data?.message || 'Unmatch operation failed' };
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Unmatch operation failed' 
+      };
     }
   }
 };

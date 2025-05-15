@@ -29,10 +29,10 @@ const app: Application = express();
 
 // Configure middleware
 app.use(cors({
-  origin: 'http://localhost:3001',
+  origin: '*', // Allow all origins for now - REVIEW FOR PRODUCTION SECURITY
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  credentials: true // Be cautious with credentials:true and origin:'*'
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -64,6 +64,13 @@ app.use('/api/matches/test', matchesRoutes);
 
 // Use TypeScript implementations for all routes
 app.use('/api/profiles', profilesRoutes);
+
+// TEMPORARY DEBUG ROUTE
+app.get('/api/matches/quota/test-debug', (req: Request, res: Response) => {
+  console.log('!!!!!! HIT /api/matches/quota/test-debug !!!!!!');
+  res.status(200).json({ message: 'Direct debug route for /api/matches/quota/test-debug is working!' });
+});
+
 app.use('/api/matches', matchesRoutes);
 
 // Log available routes for debugging

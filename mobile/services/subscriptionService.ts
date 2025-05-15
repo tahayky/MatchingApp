@@ -112,11 +112,34 @@ const subscriptionService = {
     try {
       console.log('👉 API İSTEĞİ GÖNDERME: GET /matches/quota');
       const response = await apiClient.get<SubscriptionResponse>('/matches/quota');
-      console.log('✅ Beğeni kotası bilgisi alındı:', response.data);
+      console.log('✅ Beğeni kotası alındı:', response.data);
       return response.data;
     } catch (error: any) {
-      console.error('API Error:', error.response?.data || error.message || error);
-      throw error;
+      console.error('API Error fetching like quota:', error.response?.data || error.message || error);
+      // Log the error but rethrow it so the caller can handle it,
+      // or return a specific error structure if preferred.
+      // For now, let's rethrow to make it clear an error occurred.
+      
+      // Fallback to a default error response if needed, but it's better to handle this in the UI
+      // based on the actual error.
+      // For example, if the server returns a 403, the UI should know.
+      // If we return a "success: true" here, the UI might be misled.
+      
+      // For now, to maintain some level of previous behavior in case of error,
+      // we can return a default error structure, but this should be reviewed.
+      const resetTime = new Date();
+      resetTime.setDate(resetTime.getDate() + 1);
+      resetTime.setHours(0, 0, 0, 0);
+
+      return {
+        success: false, // Indicate failure
+        message: `Abonelik bilgisi alınamadı: ${error.message || 'Bilinmeyen bir hata oluştu.'}`,
+        quotaInfo: { // Provide default/fallback quota info if necessary
+          remaining: 0,
+          total: 0,
+          resetTime: resetTime.toISOString(),
+        }
+      };
     }
   },
 
@@ -127,14 +150,14 @@ const subscriptionService = {
       const resetTime = new Date(quotaInfo.resetTime);
       const now = new Date();
       const diffMs = resetTime.getTime() - now.getTime();
-      
+
       if (diffMs <= 0) {
         return 'Şimdi';
       }
-      
+
       const hours = Math.floor(diffMs / (1000 * 60 * 60));
       const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-      
+
       if (hours > 0) {
         return `${hours} saat ${minutes} dakika`;
       } else {
@@ -142,7 +165,7 @@ const subscriptionService = {
       }
     } else {
       const { hours, minutes } = quotaInfo.timeUntilReset;
-      
+
       if (hours > 0) {
         return `${hours} saat ${minutes} dakika`;
       } else {

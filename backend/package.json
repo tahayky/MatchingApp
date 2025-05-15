@@ -4,7 +4,7 @@
   "description": "Backend API for dating app",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc --noEmitOnError false",
+    "build": "tsc",
     "build:prod": "tsc",
     "start": "node dist/server.js",
     "dev": "nodemon --watch 'src/**/*.ts' --exec 'ts-node' src/server.ts",

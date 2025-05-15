@@ -52,6 +52,7 @@ const MatchSchema: Schema = new Schema({
 
 // Make sure we don't have duplicate entries for the same user pair and action
 MatchSchema.index({ user: 1, targetUser: 1 }, { unique: true });
+MatchSchema.index({ user: 1, action: 1 }); // Index for querying user's likes/passes
 
 // Create and export the Match model
 const Match: Model<IMatch> = mongoose.model<IMatch>('Match', MatchSchema);

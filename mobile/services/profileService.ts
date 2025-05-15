@@ -99,13 +99,19 @@ const profileService = {
     if (!(await isAuthenticated())) {
       return { success: false, profile: null as any };
     }
-    
+
     // Format interests if it's an array
     if (Array.isArray(profileData.interests)) {
       profileData.interests = profileData.interests.join(',');
     }
-    
+
     try {
+      // Check internet connection first
+      const isConnected = await checkInternetConnection();
+      if (!isConnected) {
+        throw new Error('İnternet bağlantısı yok');
+      }
+
       // baseURL zaten /api içerdiğinden önek EKLEME
       const response = await apiClient.post<ProfileResponse>('/profiles', profileData);
       return response.data;
@@ -114,40 +120,52 @@ const profileService = {
       throw error; // Re-throw error to be caught by the component
     }
   },
-  
+
   async getMyProfile(): Promise<ProfileResponse> {
     // Kimlik doğrulama kontrolü
     if (!(await isAuthenticated())) {
       return { success: false, profile: null as any };
     }
-    
-      try {
-        // baseURL zaten /api içerdiğinden önek EKLEME
-        const response = await apiClient.get<ProfileResponse>('/profiles/me');
-        return response.data;
-      } catch (error: any) {
-        // 404 hatası normaldir - profil henüz oluşturulmamış demektir
-        if (error.response?.status === 404) {
-          return { 
-            success: false, 
-            profile: null as any, 
-            message: 'Profil henüz oluşturulmamış'
-          };
-        }
-        
-        // Diğer hataları sessizce işle
-        console.log('Profil getirme hatası (sessiz)');
-        return { success: false, profile: null as any };
+
+    try {
+      // Check internet connection first
+      const isConnected = await checkInternetConnection();
+      if (!isConnected) {
+        throw new Error('İnternet bağlantısı yok');
       }
+
+      // baseURL zaten /api içerdiğinden önek EKLEME
+      const response = await apiClient.get<ProfileResponse>('/profiles/me');
+      return response.data;
+    } catch (error: any) {
+      // 404 hatası normaldir - profil henüz oluşturulmamış demektir
+      if (error.response?.status === 404) {
+        return {
+          success: false,
+          profile: null as any,
+          message: 'Profil henüz oluşturulmamış'
+        };
+      }
+
+      // Diğer hataları sessizce işle
+      console.log('Profil getirme hatası (sessiz)');
+      return { success: false, profile: null as any };
+    }
   },
-  
+
   async uploadProfilePhoto(photoFile: FormData): Promise<{ success: boolean; photo: { url: string; isMain: boolean } }> {
     // Kimlik doğrulama kontrolü
     if (!(await isAuthenticated())) {
       return { success: false, photo: { url: '', isMain: false } };
     }
-    
+
     try {
+      // Check internet connection first
+      const isConnected = await checkInternetConnection();
+      if (!isConnected) {
+        throw new Error('İnternet bağlantısı yok');
+      }
+
       // baseURL zaten /api içerdiğinden önek EKLEME
       const response = await apiClient.post('/profiles/photos', photoFile, {
         headers: {
@@ -160,14 +178,23 @@ const profileService = {
       return { success: false, photo: { url: '', isMain: false } };
     }
   },
-  
+
   async setMainPhoto(photoId: string): Promise<{ success: boolean; message: string }> {
     // Kimlik doğrulama kontrolü
     if (!(await isAuthenticated())) {
       return { success: false, message: 'Giriş yapılmamış' };
     }
-    
+
     try {
+      // Check internet connection first
+      const isConnected = await checkInternetConnection();
+      if (!isConnected) {
+        return { 
+          success: false, 
+          message: 'İnternet bağlantısı yok, ana fotoğraf ayarlanamıyor' 
+        };
+      }
+
       // baseURL zaten /api içerdiğinden önek EKLEME
       const response = await apiClient.put(`/profiles/photos/${photoId}/main`);
       return response.data;
@@ -176,89 +203,89 @@ const profileService = {
       return { success: false, message: 'İşlem başarısız' };
     }
   },
-  
+
   async discoverProfiles(): Promise<DiscoverProfilesResponse> {
     // Kimlik doğrulama kontrolü
     if (!(await isAuthenticated())) {
       return { success: false, profiles: [] };
     }
-    
+
     try {
       // Önce internet bağlantısını kontrol et
       const isConnected = await checkInternetConnection();
-      
+
       if (!isConnected) {
         console.log('İnternet bağlantısı yok, önbellekten profil yükleme deneniyor...');
-        
+
         // Önbellekten profilleri al
         const cachedProfiles = await profileCache.get();
-        
+
         if (cachedProfiles && cachedProfiles.length > 0) {
           console.log(`Önbellekten ${cachedProfiles.length} profil yüklendi`);
-          return { 
-            success: true, 
-            profiles: cachedProfiles 
+          return {
+            success: true,
+            profiles: cachedProfiles
           };
         } else {
           console.log('Önbellekte profil bulunamadı');
-          return { 
-            success: false, 
+          return {
+            success: false,
             profiles: [],
             message: 'İnternet bağlantısı yok ve önbellekte profil bulunamadı'
           };
         }
       }
-      
+
       // İnternet bağlantısı varsa API'den yeni profilleri getir
       console.log('API\'den profiller alınıyor...');
-      
+
       // baseURL zaten /api içerdiğinden önek EKLEME
       const response = await apiClient.get<DiscoverProfilesResponse>('/profiles/discover');
-      
+
       // API'den başarıyla profiller alındıysa önbelleğe kaydet
       if (response.data.success && response.data.profiles.length > 0) {
         await profileCache.save(response.data.profiles);
         await profileCache.updateLastFetch();
         console.log(`${response.data.profiles.length} profil önbelleğe kaydedildi`);
       }
-      
+
       return response.data;
     } catch (error: any) {
       console.log('API hatası, önbellekten profil yükleme deneniyor...', error);
-      
+
       // API hatası durumunda önbellekten yükle
       const cachedProfiles = await profileCache.get();
-      
+
       if (cachedProfiles && cachedProfiles.length > 0) {
         console.log(`Önbellekten ${cachedProfiles.length} profil yüklendi`);
-        return { 
-          success: true, 
-          profiles: cachedProfiles 
+        return {
+          success: true,
+          profiles: cachedProfiles
         };
       }
-      
+
       // 404 hatası normaldir - profil henüz oluşturulmamış demektir
       if (error.response?.status === 404) {
-        return { 
-          success: false, 
+        return {
+          success: false,
           profiles: [],
           message: 'Profil henüz oluşturulmamış'
         };
       }
-      
+
       // Diğer hataları sessizce işle
       console.log('Profilleri keşfetme hatası (sessiz)');
       return { success: false, profiles: [] };
     }
   },
-  
+
   // New method to get user information for profile editing
   async getUserInfo(): Promise<any> {
     // Kimlik doğrulama kontrolü
     if (!(await isAuthenticated())) {
       return { success: false, user: null };
     }
-    
+
     try {
       const response = await apiClient.get('/users/me');
       return response.data;
@@ -267,7 +294,7 @@ const profileService = {
       return { success: false, user: null };
     }
   },
-  
+
   // New method to update user information (gender, interestedIn)
   async updateUserInfo(userData: {
     gender?: 'male' | 'female' | 'other';
@@ -277,7 +304,7 @@ const profileService = {
     if (!(await isAuthenticated())) {
       return { success: false };
     }
-    
+
     try {
       const response = await apiClient.put('/users/me', userData);
       return response.data;
