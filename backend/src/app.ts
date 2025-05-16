@@ -11,6 +11,7 @@ import userRoutes from './routes/users';
 import profilesRoutes from './routes/profiles-ts';
 import matchesRoutes from './routes/matches-ts';
 import subscriptionRoutes from './routes/subscription';
+import adminRoutes from './routes/admin'; // Import admin routes
 
 // Import Swagger documentation
 import { setupSwagger } from './swagger';
@@ -75,6 +76,7 @@ app.get('/api/matches/quota/test-debug', (req: Request, res: Response) => {
 });
 
 app.use('/api/matches', matchesRoutes);
+app.use('/api/admin', adminRoutes); // Register admin routes
 
 // Log available routes for debugging
 app._router.stack.forEach(function(r: any) {
