@@ -1,7 +1,7 @@
 'use client'
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Metric, Text, Title, BarList, Subtitle, Flex, Grid } from '@tremor/react'
+// import { Metric, Text, Title, BarList, Flex, Grid } from '@tremor/react' // Commented out Tremor imports
 
 export default function DashboardPage() {
   // Mock data - in production this would come from API
@@ -12,14 +12,14 @@ export default function DashboardPage() {
     { name: 'Matches', value: '2,974', change: '-2.1%', status: 'negative' },
   ]
 
-  const topSubscriptions = [
-    { name: 'Premium', value: 456 },
-    { name: 'Plus', value: 351 },
-    { name: 'Free', value: 271 },
-  ]
+  // const topSubscriptions = [
+  //   { name: 'Premium', value: 456 },
+  //   { name: 'Plus', value: 351 },
+  //   { name: 'Free', value: 271 },
+  // ]
 
   const recentActivity = [
-    { 
+    {
       id: '1', 
       user: 'Emma Johnson',
       action: 'Upgraded to Premium',
@@ -54,21 +54,29 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <Grid numItemsMd={2} numItemsLg={4} className="gap-6 mt-6">
+      {/* <Grid numItemsMd={2} numItemsLg={4} className="gap-6 mt-6"> */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-6"> {/* Fallback to simple grid */}
         {stats.map((stat) => (
           <Card key={stat.name} className="max-w-xs">
             <CardContent className="px-4 py-3">
-              <Title className="text-xl font-medium">{stat.name}</Title>
-              <Flex className="mt-2">
-                <Metric className="text-3xl font-bold">{stat.value}</Metric>
-                <Text className={`ml-2 ${stat.status === 'positive' ? 'text-green-500' : 'text-red-500'}`}>
+              {/* <Title className="text-xl font-medium">{stat.name}</Title> */}
+              <p className="text-xl font-medium">{stat.name}</p> {/* Fallback for Title */}
+              {/* <Flex className="mt-2"> */}
+              <div className="flex mt-2 items-baseline"> {/* Fallback for Flex */}
+                {/* <Metric className="text-3xl font-bold">{stat.value}</Metric> */}
+                <p className="text-3xl font-bold">{stat.value}</p> {/* Fallback for Metric */}
+                {/* <Text className={`ml-2 ${stat.status === 'positive' ? 'text-green-500' : 'text-red-500'}`}> */}
+                <p className={`ml-2 ${stat.status === 'positive' ? 'text-green-500' : 'text-red-500'}`}> {/* Fallback for Text */}
                   {stat.change}
-                </Text>
-              </Flex>
+                </p>
+                {/* </Text> */}
+              </div>
+              {/* </Flex> */}
             </CardContent>
           </Card>
         ))}
-      </Grid>
+      {/* </Grid> */}
+      </div>
 
       <div className="grid grid-cols-1 gap-6 mt-6 md:grid-cols-2">
         <Card>
@@ -79,11 +87,12 @@ export default function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <BarList 
-              data={topSubscriptions} 
-              valueFormatter={(number) => Intl.NumberFormat('us').format(number)}
-              className="mt-2" 
-            />
+            {/* <BarList
+              data={topSubscriptions}
+              valueFormatter={(number: number) => Intl.NumberFormat('us').format(number)}
+              className="mt-2"
+            /> */}
+            <div>Subscription BarList placeholder</div> {/* Placeholder for BarList */}
           </CardContent>
         </Card>
         

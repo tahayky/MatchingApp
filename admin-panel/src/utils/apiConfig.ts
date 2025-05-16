@@ -9,16 +9,25 @@
  
  // Get environment variables with defaults
  // In Next.js, client-side code can only access env vars prefixed with NEXT_PUBLIC_
+ 
+ // Define a type for the expected structure of process.env for these specific variables
+ interface AppEnv {
+   BACKEND_URL?: string;
+   NEXT_PUBLIC_API_TIMEOUT?: string;
+   [key: string]: string | undefined; // Allow other string properties if necessary
+ }
+ 
+ // Helper to safely access process.env, assuming it might be undefined in some contexts
+ // or if 'process' itself is not typed correctly by the TS environment.
+ const currentEnv = (typeof process !== 'undefined' && process.env ? process.env : {}) as AppEnv;
+ 
  export const getApiConfig = () => {
    // Accessing Next.js public environment variables
-   // TypeScript might sometimes have trouble with 'process' in non-page files,
-   // asserting to 'any' can bypass this if @types/node and next-env.d.ts are correctly set up
-   // but still not resolving.
    // IMPORTANT: For client-side access in Next.js, env vars usually need NEXT_PUBLIC_ prefix.
    // If BACKEND_URL is used client-side without the prefix, it will be undefined.
-   const baseUrl = (process.env as any).BACKEND_URL || DEFAULT_API_URL;
+   const baseUrl = currentEnv.BACKEND_URL || DEFAULT_API_URL;
    
-   const timeoutString = (process.env as any).NEXT_PUBLIC_API_TIMEOUT || DEFAULT_TIMEOUT.toString(); // Keeping timeout as NEXT_PUBLIC_ for now unless specified otherwise
+   const timeoutString = currentEnv.NEXT_PUBLIC_API_TIMEOUT || DEFAULT_TIMEOUT.toString(); // Keeping timeout as NEXT_PUBLIC_ for now unless specified otherwise
    const timeout = parseInt(timeoutString, 10);
    
    return {
@@ -38,7 +47,9 @@
    return `${baseUrl}${formattedEndpoint}`;
  };
  
- export default {
+ const apiConfigUtils = {
    getApiConfig,
    getApiUrl,
  };
+ 
+ export default apiConfigUtils;
