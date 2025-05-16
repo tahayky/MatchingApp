@@ -28,11 +28,14 @@ dotenv.config();
 const app: Application = express();
 
 // Configure middleware
+const adminPanelOrigin = process.env.ADMIN_PANEL_ORIGIN_URL || 'http://localhost:3001'; // Fallback if not set
+console.log(`CORS: Allowing origin: ${adminPanelOrigin}`);
+
 app.use(cors({
-  origin: '*', // Allow all origins for now - REVIEW FOR PRODUCTION SECURITY
+  origin: adminPanelOrigin,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true // Be cautious with credentials:true and origin:'*'
+  credentials: true
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
