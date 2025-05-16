@@ -1,9 +1,31 @@
 'use client'
 
+import { useRouter } from 'next/navigation' // Import useRouter
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 // import { Metric, Text, Title, BarList, Flex, Grid } from '@tremor/react' // Commented out Tremor imports
 
+const ADMIN_AUTH_TOKEN_KEY = 'adminAuthToken'; // Key for localStorage, should match login page
+
 export default function DashboardPage() {
+  const router = useRouter(); // Initialize router
+
+  const handleLogout = async () => {
+    try {
+      // Call the admin panel's logout API route to clear the HttpOnly cookie
+      const res = await fetch('/api/auth/logout', { method: 'POST' });
+      if (!res.ok) {
+        // Handle error if API call fails, though usually it should succeed
+        console.error('Logout API call failed:', await res.text());
+      }
+    } catch (error) {
+      console.error('Error during logout API call:', error);
+    } finally {
+      // Always clear localStorage and redirect
+      localStorage.removeItem(ADMIN_AUTH_TOKEN_KEY);
+      router.push('/login');
+    }
+  };
+
   // Mock data - in production this would come from API
   const stats = [
     { name: 'Active Users', value: '4,834', change: '+12.3%', status: 'positive' },
@@ -49,8 +71,16 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        <div className="text-sm text-gray-500 dark:text-gray-400">
-          Last updated: {new Date().toLocaleString()}
+        <div className="flex items-center space-x-4">
+          <div className="text-sm text-gray-500 dark:text-gray-400">
+            Last updated: {new Date().toLocaleString()}
+          </div>
+          <button
+            onClick={handleLogout}
+            className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+          >
+            Logout
+          </button>
         </div>
       </div>
 
