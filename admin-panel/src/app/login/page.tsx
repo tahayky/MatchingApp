@@ -31,6 +31,8 @@ export default function LoginPage() {
     try {
       // Construct the full API URL using getApiUrl which reads BACKEND_URL from .env
       const loginApiUrl = getApiUrl('admin/login');
+      alert(`Attempting to connect to: ${loginApiUrl}`); // DEBUG ALERT
+      console.log(`[Login Page] Attempting to connect to: ${loginApiUrl}`); // DEBUG CONSOLE LOG
       
       const response = await fetch(loginApiUrl, {
         method: 'POST',
