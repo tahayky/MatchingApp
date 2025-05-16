@@ -12,7 +12,7 @@
  
  // Define a type for the expected structure of process.env for these specific variables
  interface AppEnv {
-   BACKEND_URL?: string;
+   NEXT_PUBLIC_BACKEND_URL?: string; // Changed from BACKEND_URL
    NEXT_PUBLIC_API_TIMEOUT?: string;
    [key: string]: string | undefined; // Allow other string properties if necessary
  }
@@ -23,11 +23,10 @@
  
  export const getApiConfig = () => {
    // Accessing Next.js public environment variables
-   // IMPORTANT: For client-side access in Next.js, env vars usually need NEXT_PUBLIC_ prefix.
-   // If BACKEND_URL is used client-side without the prefix, it will be undefined.
-   const baseUrl = currentEnv.BACKEND_URL || DEFAULT_API_URL;
+   // Environment variables MUST be prefixed with NEXT_PUBLIC_ to be exposed to the browser.
+   const baseUrl = currentEnv.NEXT_PUBLIC_BACKEND_URL || DEFAULT_API_URL;
    
-   const timeoutString = currentEnv.NEXT_PUBLIC_API_TIMEOUT || DEFAULT_TIMEOUT.toString(); // Keeping timeout as NEXT_PUBLIC_ for now unless specified otherwise
+   const timeoutString = currentEnv.NEXT_PUBLIC_API_TIMEOUT || DEFAULT_TIMEOUT.toString();
    const timeout = parseInt(timeoutString, 10);
    
    return {
