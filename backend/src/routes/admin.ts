@@ -108,4 +108,12 @@ router.get('/stats', isAdminAuthenticated, async (req: Request, res: Response) =
   });
 });
 
+// Simple health check for the admin route itself
+// @route GET /api/admin/health
+// @desc Checks if admin routes are registered
+// @access Public
+router.get('/health', (req: Request, res: Response) => {
+  res.status(200).json({ success: true, message: 'Admin route health check OK' });
+});
+
 export default router;
