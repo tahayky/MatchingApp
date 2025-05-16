@@ -3,14 +3,14 @@ import mongoose from 'mongoose';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import Profile, { IProfile, IPhoto, IPreferences } from '../models/Profile';
-import User from '../models/User';
+import Profile, { IProfile, IPhoto, IPreferences, IProfileReject, IProfileLike } from '../models/Profile';
+import User, { IUser } from '../models/User'; // Import IUser
 import Match from '../models/Match';
 import { protect } from '../middleware/auth';
 
 // Extend Express Request interface
 interface AuthRequest extends Request {
-  user?: any; // For gradual migration, we'll first use "any" and refine later
+  user?: IUser; // Use IUser for better type safety
   file?: Express.Multer.File;
 }
 
@@ -31,7 +31,7 @@ const storage = multer.diskStorage({
     }
     
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, `${req.user._id}-${uniqueSuffix}${path.extname(file.originalname)}`);
+    cb(null, `${req.user._id.toString()}-${uniqueSuffix}${path.extname(file.originalname)}`);
   }
 });
 
@@ -39,14 +39,13 @@ const storage = multer.diskStorage({
 const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const allowedTypes = /jpeg|jpg|png|webp/;
   
-  // Check file type
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
   const mimetype = allowedTypes.test(file.mimetype);
   
   if (extname && mimetype) {
     return cb(null, true);
   } else {
-    cb(new Error('Only images (jpeg, jpg, png, webp) are allowed'));
+    cb(new Error('Only images (jpeg, jpg, png, webp) are allowed') as any); // Cast error for cb
   }
 };
 
@@ -56,13 +55,13 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 
-// Interface for profile fields
-interface ProfileFields {
-  user: any;
+// Interface for profile fields when creating/updating
+interface ProfileInputFields {
+  user: mongoose.Types.ObjectId;
   bio?: string;
   location: {
-    type: string;
-    coordinates: number[];
+    type: 'Point';
+    coordinates: [number, number];
     city?: string;
     country?: string;
   };
@@ -70,15 +69,12 @@ interface ProfileFields {
   occupation?: string;
   education?: string;
   height?: number;
-  likedBy?: any[];
-  preferences?: {
-    ageRange?: {
-      min?: number;
-      max?: number;
-    };
-    distance?: number;
-  };
+  likedBy?: IProfileLike[]; // Use IProfileLike from model
+  rejected?: IProfileReject[]; // Use IProfileReject from model
+  preferences?: IPreferences; // Use IPreferences from model
+  lastActive?: Date;
 }
+
 
 // Create router instance
 const router: Router = express.Router();
@@ -88,7 +84,6 @@ const router: Router = express.Router();
 // @access  Private
 router.post('/', protect, async (req: AuthRequest, res: Response) => {
   try {
-    // Check if user is authenticated
     if (!req.user || !req.user._id) {
       return res.status(401).json({ 
         success: false, 
@@ -98,10 +93,10 @@ router.post('/', protect, async (req: AuthRequest, res: Response) => {
     
     const {
       bio,
-      coordinates,
+      coordinates, // Expecting [longitude, latitude]
       city,
       country,
-      interests,
+      interests, // Expecting comma-separated string or array
       occupation,
       education,
       height,
@@ -110,52 +105,53 @@ router.post('/', protect, async (req: AuthRequest, res: Response) => {
       maxDistance
     } = req.body;
 
-    // Build profile object with proper typing
-    const profileFields: ProfileFields = {
+    const profileFields: Partial<ProfileInputFields> = { // Use Partial as not all fields are required for update
       user: req.user._id,
-      bio,
-      location: {
-        type: 'Point', // Required for GeoJSON format
-        coordinates: coordinates || [0, 0],
-        city,
-        country
-      },
-      interests: interests ? interests.split(',').map((interest: string) => interest.trim()) : [],
-      occupation,
-      education,
-      height,
-      likedBy: [] // Empty array for likedBy - will be populated via match system
     };
 
-    // Build preferences object
-    if (ageRangeMin || ageRangeMax || maxDistance) {
-      profileFields.preferences = {};
-      
-      if (ageRangeMin || ageRangeMax) {
-        profileFields.preferences.ageRange = {};
-        if (ageRangeMin) profileFields.preferences.ageRange.min = ageRangeMin;
-        if (ageRangeMax) profileFields.preferences.ageRange.max = ageRangeMax;
-      }
-      
-      if (maxDistance) profileFields.preferences.distance = maxDistance;
+    if (bio !== undefined) profileFields.bio = bio;
+    profileFields.location = {
+        type: 'Point',
+        coordinates: coordinates || [0,0] as [number, number], // Default if not provided
+        city: city,
+        country: country
+    };
+    if (interests !== undefined) {
+        profileFields.interests = Array.isArray(interests) ? interests : (interests as string).split(',').map((interest: string) => interest.trim());
     }
+    if (occupation !== undefined) profileFields.occupation = occupation;
+    if (education !== undefined) profileFields.education = education;
+    if (height !== undefined) profileFields.height = height;
+    
+    profileFields.preferences = {
+        ageRange: {
+            min: ageRangeMin !== undefined ? parseInt(ageRangeMin, 10) : 18,
+            max: ageRangeMax !== undefined ? parseInt(ageRangeMax, 10) : 100
+        },
+        distance: maxDistance !== undefined ? parseInt(maxDistance, 10) : 50
+    };
 
-    // Update or create profile
+
     let profile = await Profile.findOne({ user: req.user._id });
 
     if (profile) {
-      // Update
       profile = await Profile.findOneAndUpdate(
         { user: req.user._id },
         { $set: profileFields },
-        { new: true }
+        { new: true, runValidators: true } // Added runValidators
       );
     } else {
-      // Create
-      profile = new Profile(profileFields);
+      // For creation, ensure all required fields for ProfileInputFields are present or have defaults
+      const createFields: ProfileInputFields = {
+        user: req.user._id,
+        location: profileFields.location || { type: 'Point', coordinates: [0,0], city: 'Unknown', country: 'Unknown'},
+        likedBy: [],
+        rejected: [],
+        lastActive: new Date(),
+        ...profileFields // Spread other optional fields
+      };
+      profile = new Profile(createFields);
       await profile.save();
-      
-      // Mark user profile as complete if this is the first time creating profile
       await User.findByIdAndUpdate(req.user._id, { isProfileComplete: true });
     }
 
@@ -179,7 +175,6 @@ router.post('/', protect, async (req: AuthRequest, res: Response) => {
 // @access  Private
 router.get('/me', protect, async (req: AuthRequest, res: Response) => {
   try {
-    // Check if user is authenticated
     if (!req.user || !req.user._id) {
       return res.status(401).json({ 
         success: false, 
@@ -187,42 +182,14 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
       });
     }
     
-    console.log('[DEBUG] /api/profiles/me endpoint çağrıldı');
     const profile = await Profile.findOne({ user: req.user._id });
 
     if (!profile) {
-      console.log('[DEBUG] Kullanıcı profili bulunamadı, örnek profil döndürülüyor');
-      
-      // Create a sample profile for the user
-      const sampleProfile = {
-        _id: 'sample-profile',
-        user: req.user._id,
-        bio: 'This is a sample profile. Please complete your profile.',
-        location: {
-          type: 'Point', // Required for GeoJSON
-          coordinates: [0, 0],
-          city: 'Your City',
-          country: 'Your Country'
-        },
-        interests: ['Add your interests'],
-        occupation: 'Your Occupation',
-        education: 'Your Education',
-        photos: [],
-        preferences: {
-          ageRange: {
-            min: 18,
-            max: 65
-          },
-          distance: 50
-        },
-        lastActive: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-      
-      return res.json({
-        success: true,
-        profile: sampleProfile
+      // If no profile, return a clear message, not a sample one.
+      // The client can decide how to handle a non-existent profile (e.g., prompt for creation).
+      return res.status(404).json({
+        success: false,
+        message: 'Profile not found for this user. Please create one.'
       });
     }
 
@@ -263,23 +230,25 @@ router.post('/photos', protect, upload.single('photo'), async (req: AuthRequest,
     const profile = await Profile.findOne({ user: req.user._id });
     
     if (!profile) {
+      // If file was uploaded but profile doesn't exist, remove the uploaded file to prevent orphans
+      if (req.file && req.file.path) {
+        fs.unlink(req.file.path, (err) => {
+          if (err) console.error("Error deleting orphaned file:", err);
+        });
+      }
       return res.status(404).json({ 
         success: false, 
         message: 'Please create a profile first' 
       });
     }
 
-    // Get file path from multer
     const photoUrl = `/${req.file.path.replace(/\\/g, '/')}`;
-    
-    // Check if this is the first photo (make it main)
     const isMain = profile.photos.length === 0;
 
-    // Add photo to profile
     profile.photos.push({
       url: photoUrl,
       isMain
-    });
+    } as IPhoto); // Cast to IPhoto
 
     await profile.save();
 
@@ -292,6 +261,12 @@ router.post('/photos', protect, upload.single('photo'), async (req: AuthRequest,
     });
   } catch (error: unknown) {
     console.error('Upload photo error:', error);
+    // If there was an error during DB save but file was uploaded, try to delete it.
+    if (req.file && req.file.path) {
+        fs.unlink(req.file.path, (err) => {
+          if (err) console.error("Error deleting file after DB error:", err);
+        });
+    }
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     res.status(500).json({ 
       success: false, 
@@ -306,7 +281,6 @@ router.post('/photos', protect, upload.single('photo'), async (req: AuthRequest,
 // @access  Private
 router.get('/discover', protect, async (req: AuthRequest, res: Response) => {
   try {
-    // Check if user is authenticated
     if (!req.user || !req.user._id) {
       return res.status(401).json({ 
         success: false, 
@@ -314,95 +288,60 @@ router.get('/discover', protect, async (req: AuthRequest, res: Response) => {
       });
     }
     
-    console.log('[DEBUG] Discover API endpoint called');
-    
-    // Get user and profile information
-    const user = await User.findById(req.user._id);
-    if (!user) {
+    const currentUser = await User.findById(req.user._id);
+    if (!currentUser) {
       return res.status(404).json({ 
         success: false, 
         message: 'User not found' 
       });
     }
     
-    console.log(`[DEBUG] Current user: ${user._id}, interested in: ${user.interestedIn?.join(', ')}`);
-    
-    // Find or create user profile with upsert
     let userProfile = await Profile.findOne({ user: req.user._id });
     if (!userProfile) {
-      console.log(`[DEBUG] User profile not found (${req.user._id}), creating new profile`);
-      
-      // Create default profile for current user
+      // Create a default profile if one doesn't exist
       userProfile = await Profile.findOneAndUpdate(
         { user: req.user._id },
         { 
           $setOnInsert: {
             user: req.user._id,
-            location: {
-              type: 'Point',
-              coordinates: [0, 0],
-              city: 'Unknown',
-              country: 'Unknown'
-            },
+            location: { type: 'Point', coordinates: [0,0] as [number,number], city: 'Unknown', country: 'Unknown' },
             interests: [],
             likedBy: [],
+            rejected: [],
             lastActive: new Date(),
-            createdAt: new Date()
+            createdAt: new Date(),
+            preferences: { ageRange: {min: 18, max: 100}, distance: 50} // Default preferences
           }
         },
-        { 
-          new: true,
-          upsert: true,
-          setDefaultsOnInsert: true
-        }
+        { new: true, upsert: true, setDefaultsOnInsert: true }
       );
-      
-      // After upsert, userProfile cannot be null, but let's check to satisfy TypeScript
       if (!userProfile) {
-        return res.status(500).json({
-          success: false,
-          message: 'Failed to create user profile'
-        });
+        return res.status(500).json({ success: false, message: 'Failed to create user profile' });
       }
-      
-      console.log(`[DEBUG] New profile created: ${userProfile._id}`);
     }
     
-    // Find users matching gender preferences
-    const interestedInGenders = user.interestedIn || [];
-    console.log(`[DEBUG] Finding users with genders: ${interestedInGenders}`);
+    const interestedInGenders = currentUser.interestedIn || [];
     
-    // Find users matching the gender preferences
     const genderMatchingUsers = await User.find({
-      _id: { $ne: user._id }, // Exclude the current user
-      gender: { $in: interestedInGenders } // Only include users with matching genders
-    }).select('_id gender');
-    
-    console.log(`[DEBUG] Found ${genderMatchingUsers.length} users matching gender preferences`);
+      _id: { $ne: currentUser._id }, 
+      gender: { $in: interestedInGenders } 
+    }).select('_id'); // Only need IDs for the next query
     
     if (genderMatchingUsers.length === 0) {
-      console.log('[DEBUG] No users found matching gender preferences');
-      return res.json({
-        success: true,
-        profiles: []
-      });
+      return res.json({ success: true, profiles: [] });
     }
     
-    // Extract just the user IDs
     const genderMatchingUserIds = genderMatchingUsers.map(u => u._id);
     
-    // Find profiles for these users with typed query
-    const query: any = {
+    const query: mongoose.FilterQuery<IProfile> = { // Use mongoose.FilterQuery
       user: { $in: genderMatchingUserIds }
     };
     
-    // Apply location-based filtering if coordinates available
     if (userProfile.location && 
         userProfile.location.coordinates && 
-        userProfile.location.coordinates[0] !== 0 && 
-        userProfile.location.coordinates[1] !== 0) {
+        (userProfile.location.coordinates[0] !== 0 || userProfile.location.coordinates[1] !== 0)) { // Check both coords
       
-      const maxDistance = userProfile.preferences?.distance || 50; // km
+      const maxDistance = userProfile.preferences?.distance || 50; 
       
       query.location = {
         $near: {
@@ -410,59 +349,82 @@ router.get('/discover', protect, async (req: AuthRequest, res: Response) => {
             type: 'Point',
             coordinates: userProfile.location.coordinates
           },
-          $maxDistance: maxDistance * 1000 // convert km to meters
+          $maxDistance: maxDistance * 1000 
         }
       };
     }
     
-    // Get profiles to exclude (rejected and liked profiles)
     const profilesToExclude: mongoose.Types.ObjectId[] = [];
     
-    // Add rejected profiles to exclude list
     if (userProfile.rejected && userProfile.rejected.length > 0) {
-      userProfile.rejected.forEach(rejection => {
+      userProfile.rejected.forEach((rejection: IProfileReject) => { // Type rejection
         if (rejection.profile) {
           profilesToExclude.push(rejection.profile);
         }
       });
     }
     
-    // Find already liked profiles from Match collection
     const likedMatches = await Match.find({
       user: req.user._id,
-      action: 'like'
-    });
+      action: 'like' // No need to check isMatch here, just liked actions
+    }).select('targetUser'); // Only select targetUser
     
     if (likedMatches.length > 0) {
-      // Get the profiles associated with these liked users
       const likedUserIds = likedMatches.map(match => match.targetUser);
-      const likedProfiles = await Profile.find({ user: { $in: likedUserIds } }).select('_id');
-      
-      // Add these profile IDs to the exclude list
-      likedProfiles.forEach(profile => {
+      // Find profiles of users already liked by current user
+      const likedTargetProfiles = await Profile.find({ user: { $in: likedUserIds } }).select('_id');
+      likedTargetProfiles.forEach(profile => {
         profilesToExclude.push(profile._id);
       });
     }
     
-    // Apply the exclusion filter
     if (profilesToExclude.length > 0) {
-      query._id = { $nin: profilesToExclude };
+      query._id = { $nin: profilesToExclude.filter(id => mongoose.Types.ObjectId.isValid(id)) }; // Ensure valid ObjectIds
     }
     
-    // Find profiles with pagination (limit to 20)
     const profiles = await Profile.find(query)
-      .populate({
+      .populate<{ user: Pick<IUser, '_id' | 'name' | 'dateOfBirth' | 'gender'> }>({ // Type populated user
         path: 'user',
-        select: 'name dateOfBirth gender'
+        select: '_id name dateOfBirth gender' // Added _id to select
       })
-      .limit(20);
+      .limit(20); // Discovery limit
     
-    console.log(`[DEBUG] Found ${profiles.length} profiles matching criteria`);
-    
-    // Return the profiles
+    // Format profiles before sending
+    const formattedProfiles = profiles.map(p => {
+        const user = p.user as Pick<IUser, '_id' | 'name' | 'dateOfBirth' | 'gender'>; // Type assertion, now includes _id
+        // Calculate age (ensure dateOfBirth is a Date object or valid date string)
+        let age;
+        if (user && user.dateOfBirth) {
+            const birthDate = new Date(user.dateOfBirth);
+            const today = new Date();
+            age = today.getFullYear() - birthDate.getFullYear();
+            const m = today.getMonth() - birthDate.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+                age--;
+            }
+        }
+
+        return {
+            _id: p._id,
+            user: { // user object now correctly includes _id due to updated populate
+                _id: user?._id,
+                name: user?.name,
+                gender: user?.gender,
+                age: age // Include calculated age
+            },
+            photos: p.photos,
+            bio: p.bio,
+            location: p.location ? { city: p.location.city, country: p.location.country } : undefined,
+            interests: p.interests,
+            occupation: p.occupation,
+            education: p.education,
+        };
+    });
+
+
     return res.json({
       success: true,
-      profiles: profiles
+      profiles: formattedProfiles
     });
     
   } catch (error: unknown) {
@@ -488,6 +450,11 @@ router.put('/photos/:photoId/main', protect, async (req: AuthRequest, res: Respo
       });
     }
     
+    const { photoId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(photoId)) {
+        return res.status(400).json({ success: false, message: 'Invalid photo ID' });
+    }
+
     const profile = await Profile.findOne({ user: req.user._id });
     
     if (!profile) {
@@ -497,33 +464,26 @@ router.put('/photos/:photoId/main', protect, async (req: AuthRequest, res: Respo
       });
     }
 
-    // Verify photo exists and belongs to user
-    const photoId = req.params.photoId;
-    const photoIndex = profile.photos.findIndex(photo => 
-      photo._id && photo._id.toString() === photoId
-    );
-
-    if (photoIndex === -1) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Photo not found' 
-      });
-    }
-
-    // Set all photos to not main
-    profile.photos.forEach(photo => {
-      photo.isMain = false;
+    let photoFound = false;
+    profile.photos.forEach((photo: IPhoto) => { // Type photo
+      if (photo._id && photo._id.toString() === photoId) {
+        photo.isMain = true;
+        photoFound = true;
+      } else {
+        photo.isMain = false;
+      }
     });
 
-    // Set selected photo as main
-    profile.photos[photoIndex].isMain = true;
-    
+    if (!photoFound) {
+      return res.status(404).json({ success: false, message: 'Photo not found in profile' });
+    }
+
     await profile.save();
 
     res.json({
       success: true,
-      message: 'Main photo updated',
-      photos: profile.photos
+      message: 'Main photo updated successfully',
+      photos: profile.photos // Send back updated photos array
     });
   } catch (error: unknown) {
     console.error('Set main photo error:', error);
@@ -536,15 +496,10 @@ router.put('/photos/:photoId/main', protect, async (req: AuthRequest, res: Respo
   }
 });
 
-// @route   GET /api/profiles/test
-// @desc    Test endpoint for TypeScript profiles
-// @access  Public
+
+// Test route (optional, can be removed for production)
 router.get('/test', (req: Request, res: Response) => {
-  res.json({
-    success: true,
-    message: 'TypeScript profiles route is working',
-    timestamp: new Date().toISOString()
-  });
+  res.json({ message: 'Profiles test route is working!' });
 });
 
 export default router;
