@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation' // Import useRouter
+
+const ADMIN_AUTH_TOKEN_KEY = 'adminAuthToken'; // Key for localStorage
 
 // Navigation items
 const navItems = [
@@ -60,11 +62,28 @@ const navItems = [
 ]
 
 export default function Sidebar() {
-  const pathname = usePathname()
-  const [isOpen, setIsOpen] = useState(true)
+  const pathname = usePathname();
+  const router = useRouter(); // Initialize router
+  const [isOpen, setIsOpen] = useState(true);
+
+  const handleLogout = async () => {
+    try {
+      // Call the admin panel's logout API route to clear the HttpOnly cookie
+      const res = await fetch('/api/auth/logout', { method: 'POST' });
+      if (!res.ok) {
+        console.error('Logout API call failed:', await res.text());
+      }
+    } catch (error) {
+      console.error('Error during logout API call:', error);
+    } finally {
+      // Always clear localStorage and redirect
+      localStorage.removeItem(ADMIN_AUTH_TOKEN_KEY);
+      router.push('/login');
+    }
+  };
 
   return (
-    <aside 
+    <aside
       className={`fixed top-0 left-0 z-40 h-screen transition-transform ${isOpen ? 'w-64' : 'w-16'} bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700`}
     >
       <div className="flex flex-col h-full px-3 py-4">
@@ -114,17 +133,17 @@ export default function Sidebar() {
         </ul>
 
         <div className="mt-auto">
-          <a
-            href="/api/auth/logout"
-            className="flex items-center p-2 text-gray-900 rounded-lg dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700"
+          <button
+            onClick={handleLogout}
+            className="flex w-full items-center p-2 text-gray-900 rounded-lg dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 group"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
               <polyline points="16 17 21 12 16 7" />
               <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
             {isOpen && <span className="ml-3">Logout</span>}
-          </a>
+          </button>
         </div>
       </div>
     </aside>
