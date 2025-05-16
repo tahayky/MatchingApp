@@ -24,6 +24,16 @@
  export const getApiConfig = () => {
    // Accessing Next.js public environment variables
    // Environment variables MUST be prefixed with NEXT_PUBLIC_ to be exposed to the browser.
+   
+   // Diagnostic log:
+   if (typeof window !== 'undefined') { // Log only on client-side
+     // console.log('[apiConfig] Raw process.env.NEXT_PUBLIC_BACKEND_URL:', (process.env as any).NEXT_PUBLIC_BACKEND_URL); // This would cause lint error
+     console.log('[apiConfig] Value from currentEnv.NEXT_PUBLIC_BACKEND_URL:', currentEnv.NEXT_PUBLIC_BACKEND_URL);
+     // Next.js makes NEXT_PUBLIC_ variables available on process.env client-side.
+     // The 'process' type issue should be resolved if `npm install` was successful and `next-env.d.ts` is working.
+     console.log('[apiConfig] Direct process.env.NEXT_PUBLIC_BACKEND_URL (client-side):', process.env.NEXT_PUBLIC_BACKEND_URL);
+   }
+ 
    const baseUrl = currentEnv.NEXT_PUBLIC_BACKEND_URL || DEFAULT_API_URL;
    
    const timeoutString = currentEnv.NEXT_PUBLIC_API_TIMEOUT || DEFAULT_TIMEOUT.toString();
