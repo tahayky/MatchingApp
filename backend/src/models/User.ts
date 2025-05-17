@@ -4,6 +4,43 @@ import bcrypt from 'bcryptjs';
 // Define types
 export type Gender = 'male' | 'female' | 'other';
 
+// Define interfaces for Profile-related data structures
+export interface IPhoto {
+  url: string;
+  isMain: boolean;
+  _id?: mongoose.Types.ObjectId;
+}
+
+export interface ILocation {
+  type: 'Point';
+  coordinates: [number, number]; // [longitude, latitude]
+  city?: string;
+  country?: string;
+}
+
+export interface IAgeRange {
+  min: number;
+  max: number;
+}
+
+export interface IPreferences {
+  ageRange?: IAgeRange;
+  distance?: number; // in km
+}
+
+export interface ILikeData {
+  user: mongoose.Types.ObjectId; // Changed from profile to user
+  likedAt: Date;
+  _id?: mongoose.Types.ObjectId;
+}
+
+export interface IRejectData {
+  user: mongoose.Types.ObjectId; // Changed from profile to user
+  rejectedAt: Date;
+  _id?: mongoose.Types.ObjectId;
+}
+
+
 // Define interfaces
 export interface IUser extends Document {
   email: string;
@@ -13,9 +50,23 @@ export interface IUser extends Document {
   gender: Gender;
   interestedIn: Gender[];
   isProfileComplete: boolean;
+
+  // Profile fields
+  photos: IPhoto[];
+  bio?: string;
+  location: ILocation;
+  interests: string[];
+  occupation?: string;
+  education?: string;
+  height?: number; // in cm
+  preferences?: IPreferences;
+  likedBy: ILikeData[]; // Users who liked this user
+  rejected: IRejectData[]; // Users this user has rejected/passed
+  lastActive: Date;
+
   // Subscription and quota fields
   subscriptionTier: string;
-  subscriptionExpiresAt?: Date; 
+  subscriptionExpiresAt?: Date;
   dailyLikeQuota: number;
   remainingLikes: number;
   likesResetTime: Date;
@@ -63,6 +114,40 @@ const UserSchema: Schema = new Schema({
     type: Boolean,
     default: false
   },
+
+  // Profile fields
+  photos: [{
+    url: { type: String, required: true },
+    isMain: { type: Boolean, default: false }
+  }],
+  bio: { type: String, maxlength: 500 },
+  location: {
+    type: { type: String, enum: ['Point'], default: 'Point' },
+    coordinates: { type: [Number], default: [0, 0] }, // [longitude, latitude]
+    city: String,
+    country: String
+  },
+  interests: [{ type: String }],
+  occupation: String,
+  education: String,
+  height: Number, // in cm
+  preferences: {
+    ageRange: {
+      min: { type: Number, default: 18 },
+      max: { type: Number, default: 100 }
+    },
+    distance: { type: Number, default: 50 } // km
+  },
+  likedBy: [{
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Changed from Profile to User
+    likedAt: { type: Date, default: Date.now }
+  }],
+  rejected: [{
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Changed from Profile to User
+    rejectedAt: { type: Date, default: Date.now }
+  }],
+  lastActive: { type: Date, default: Date.now },
+
   // Subscription and quota fields
   subscriptionTier: {
     type: String,
@@ -101,6 +186,9 @@ const UserSchema: Schema = new Schema({
     default: Date.now
   }
 }, { timestamps: true });
+
+// Create geospatial index for location-based queries
+UserSchema.index({ location: '2dsphere' });
 
 // Define the this-context for pre hooks with proper typing
 UserSchema.pre<IUser>('save', async function(next) {

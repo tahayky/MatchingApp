@@ -1,8 +1,7 @@
 import express, { Request, Response, Router } from 'express';
 import mongoose from 'mongoose';
 import Match, { IMatch, MatchAction } from '../models/Match';
-import Profile, { IProfile, IPhoto, IProfileLike as ProfileLikeInfo, IProfileReject } from '../models/Profile'; // Added IProfileLike, IProfileReject
-import User, { IUser } from '../models/User';
+import User, { IUser, IPhoto, ILikeData, IRejectData } from '../models/User'; // Updated to use User model and its types
 import { protect } from '../middleware/auth';
 import { isAdmin } from '../middleware/admin';
 import axios from 'axios';
@@ -124,81 +123,42 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
       });
     }
 
-    const targetProfile = await Profile.findById(targetUserId);
-    if (!targetProfile) {
-      return res.status(404).json({
-        success: false,
-        message: 'Target profile not found'
-      });
-    }
-    
-    const profileUserId = targetProfile.user;
-    const targetUser = await User.findById(profileUserId);
+    const targetUser = await User.findById(targetUserId);
     if (!targetUser) {
       return res.status(404).json({
         success: false,
-        message: 'Target user associated with the profile not found'
+        message: 'Target user not found'
       });
     }
 
-    let currentUserProfile = await Profile.findOne({ user: req.user._id });
-    
-    if (!currentUserProfile) {
-      console.log(`[DEBUG] Current user (${req.user._id}) does not have a profile, creating in action endpoint`);
-      try {
-        currentUserProfile = await Profile.findOneAndUpdate(
-          { user: req.user._id },
-          { 
-            $setOnInsert: {
-              user: req.user._id,
-              location: {
-                type: 'Point',
-                coordinates: [0, 0] as [number, number],
-                city: 'Unknown',
-                country: 'Unknown'
-              },
-              likedBy: [] as ProfileLikeInfo[],
-              rejected: [] as IProfileReject[],
-              lastActive: new Date(),
-              createdAt: new Date()
-            }
-          },
-          { 
-            new: true,
-            upsert: true,
-            setDefaultsOnInsert: true
-          }
-        );
-        
-        if (!currentUserProfile) {
-          throw new Error('Failed to create user profile');
-        }
-        console.log(`[DEBUG] Created profile for user ${req.user._id} in action endpoint: ${currentUserProfile._id}`);
-      } catch (profileError: unknown) {
-        console.error('Error creating profile in action endpoint:', profileError);
-        const message = profileError instanceof Error ? profileError.message : 'Unknown error creating profile';
-        return res.status(500).json({
-          success: false, 
-          message: 'Error creating user profile',
-          error: message
-        });
-      }
+    const currentUser = await User.findById(req.user._id);
+    if (!currentUser) {
+      // This should ideally not happen due to 'protect' middleware
+      return res.status(404).json({ success: false, message: 'Current user not found' });
     }
+    
+    // Ensure profile-related fields are initialized for the current user if they are interacting
+    currentUser.location = currentUser.location || { type: 'Point', coordinates: [0,0], city: 'Unknown', country: 'Unknown' };
+    currentUser.preferences = currentUser.preferences || { ageRange: {min: 18, max: 100}, distance: 50};
+    currentUser.likedBy = currentUser.likedBy || [];
+    currentUser.rejected = currentUser.rejected || [];
+    currentUser.photos = currentUser.photos || [];
+    await currentUser.save(); // Save if any defaults were set
 
     let existingMatch = await Match.findOne({
-      user: req.user._id,
-      targetUser: profileUserId
+      user: currentUser._id,
+      targetUser: targetUser._id
     });
-    
+
     let actionResult: IMatch;
 
     if (existingMatch) {
       if (existingMatch.action === action) {
-        console.log(`[ACTION ALREADY EXISTS] Action ${action} already registered, not changing quota`);
+        console.log(`[ACTION ALREADY EXISTS] Action ${action} for target ${targetUser._id} by ${currentUser._id} already registered, not changing quota`);
         let quotaInfo = {
-          remaining: req.user.remainingLikes,
-          total: req.user.dailyLikeQuota,
-          resetTime: req.user.likesResetTime
+          remaining: currentUser.remainingLikes,
+          total: currentUser.dailyLikeQuota,
+          resetTime: currentUser.likesResetTime
         };
         return res.json({
           success: true,
@@ -210,23 +170,23 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
 
       existingMatch.action = action as MatchAction;
       if (action === 'pass' && existingMatch.isMatch) {
-        existingMatch.isMatch = false;
+        existingMatch.isMatch = false; // Unmatch if passing on an existing match
         existingMatch.matchedAt = undefined;
       }
       await existingMatch.save();
       actionResult = existingMatch;
     } else {
       actionResult = await Match.create({
-        user: req.user._id,
-        targetUser: profileUserId,
+        user: currentUser._id,
+        targetUser: targetUser._id,
         action
       });
     }
 
     if (action === 'like') {
       const mutualMatch = await Match.findOne({
-        user: profileUserId, 
-        targetUser: req.user._id,
+        user: targetUser._id,
+        targetUser: currentUser._id,
         action: 'like'
       });
 
@@ -239,17 +199,23 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
         mutualMatch.matchedAt = new Date();
         await mutualMatch.save();
 
-        const alreadyLiked = targetProfile.likedBy.some(
-          (like: ProfileLikeInfo) => like.profile && like.profile.toString() === currentUserProfile!._id.toString()
+        // Add to targetUser's likedBy array
+        targetUser.likedBy = targetUser.likedBy || [];
+        const alreadyLikedByTarget = targetUser.likedBy.some(
+          (like: ILikeData) => like.user && like.user.toString() === currentUser._id.toString()
         );
-
-        if (!alreadyLiked) {
-          targetProfile.likedBy.push({
-            profile: currentUserProfile!._id,
+        if (!alreadyLikedByTarget) {
+          targetUser.likedBy.push({
+            user: currentUser._id, // Current user liked the target
             likedAt: new Date()
-          });
-          await targetProfile.save();
+          } as ILikeData); // Cast to ILikeData
+          await targetUser.save();
         }
+        
+        // Add to currentUser's likedBy array (reciprocal, though action is initiated by current user)
+        // This might be redundant if we only care about who liked whom.
+        // For now, let's assume `likedBy` means "users who have liked me".
+        // The match document itself signifies the current user's like.
 
         let quotaInfo;
         try {
@@ -260,6 +226,9 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
           });
           console.log(`[MUTUAL MATCH] Quota endpoint consumed a like, remaining: ${result.data.quotaInfo.remaining}`);
           quotaInfo = result.data.quotaInfo;
+          // Update current user's remaining likes based on API response
+          currentUser.remainingLikes = quotaInfo.remaining;
+          await currentUser.save();
         } catch (error: unknown) {
           console.error('Error consuming like for mutual match:', error);
           return res.status(500).json({
@@ -277,29 +246,32 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
           quotaInfo
         });
       } else {
-        const alreadyLiked = targetProfile.likedBy.some(
-          (like: ProfileLikeInfo) => like.profile && like.profile.toString() === currentUserProfile!._id.toString()
+        // Not a mutual match yet, just record the like in targetUser's likedBy
+        targetUser.likedBy = targetUser.likedBy || [];
+         const alreadyLikedByTarget = targetUser.likedBy.some(
+          (like: ILikeData) => like.user && like.user.toString() === currentUser._id.toString()
         );
-
-        if (!alreadyLiked) {
-          targetProfile.likedBy.push({
-            profile: currentUserProfile!._id,
-            likedAt: new Date()
-          });
-          await targetProfile.save();
+        if (!alreadyLikedByTarget) {
+            targetUser.likedBy.push({
+                user: currentUser._id, // Current user liked the target
+                likedAt: new Date()
+            } as ILikeData);
+            await targetUser.save();
         }
       }
     } else if (action === 'pass') {
-      const alreadyRejected = currentUserProfile!.rejected?.some(
-        (rejection: IProfileReject) => rejection.profile && rejection.profile.toString() === targetProfile._id.toString()
+      // Record the rejection in the current user's rejected list
+      currentUser.rejected = currentUser.rejected || [];
+      const alreadyRejected = currentUser.rejected.some(
+        (rejection: IRejectData) => rejection.user && rejection.user.toString() === targetUser._id.toString()
       );
 
-      if (!alreadyRejected && currentUserProfile!.rejected) {
-        currentUserProfile!.rejected.push({
-          profile: targetProfile._id,
+      if (!alreadyRejected) {
+        currentUser.rejected.push({
+          user: targetUser._id, // Target user was rejected by current user
           rejectedAt: new Date()
-        });
-        await currentUserProfile!.save();
+        } as IRejectData);
+        await currentUser.save();
       }
     }
 
@@ -370,49 +342,35 @@ router.get('/', protect, async (req: AuthRequest, res: Response) => {
 
     const targetUserIds = matches.map((match: IMatch) => match.targetUser);
     
-    const targetUsers = await User.find({ 
-      _id: { $in: targetUserIds } 
-    }).select('_id name');
-    
-    const profiles = await Profile.find({
-      user: { $in: targetUserIds }
-    }).select('user photos lastActive');
-    
-    const profileMap = new Map<string, IProfile>();
-    profiles.forEach((profile: IProfile) => {
-      if (profile.user) {
-        profileMap.set(profile.user.toString(), profile);
-      }
-    });
-    
-    const userMap = new Map<string, Pick<IUser, '_id' | 'name'>>();
-    targetUsers.forEach((user: Pick<IUser, '_id' | 'name'>) => { // Explicitly type user here
+    const targetUsers = await User.find({
+      _id: { $in: targetUserIds }
+    }).select('_id name photos lastActive'); // Fetch necessary fields directly from User
+
+    const userMap = new Map<string, IUser>();
+    targetUsers.forEach((user: IUser) => {
       userMap.set(user._id.toString(), user);
     });
-    
-    const matchesWithProfiles = matches.map((match: IMatch) => {
-      const targetUserIdString = match.targetUser.toString();
-      const profileData: IProfile | undefined = profileMap.get(targetUserIdString);
-      const userData: Pick<IUser, '_id' | 'name'> | undefined = userMap.get(targetUserIdString);
-      
-      const mainPhoto = profileData?.photos?.find((p: IPhoto) => p.isMain);
-      
+
+    const populatedMatches = matches.map((match: IMatch) => {
+      const targetUserData = userMap.get(match.targetUser.toString());
+      const mainPhoto = targetUserData?.photos?.find((p: IPhoto) => p.isMain);
+
       return {
         _id: match._id,
         targetUser: {
           _id: match.targetUser,
-          name: userData?.name || 'Unknown User',
+          name: targetUserData?.name || 'Unknown User',
           photo: mainPhoto ? mainPhoto.url : null,
-          lastActive: profileData?.lastActive
+          lastActive: targetUserData?.lastActive
         },
         matchedAt: match.matchedAt,
-        createdAt: match.createdAt
+        createdAt: match.createdAt // Include createdAt if needed by client
       };
     });
 
     res.json({
       success: true,
-      matches: matchesWithProfiles
+      matches: populatedMatches
     });
   } catch (error: unknown) {
     console.error('Get matches error:', error);
@@ -438,108 +396,68 @@ router.get('/likes', protect, async (req: AuthRequest, res: Response) => {
     }
 
     const currentUserId = req.user._id;
-    let userProfile: IProfile | null = null; 
-    
-    try {
-      const profile = await Profile.findOne({ user: currentUserId });
-      if (profile) {
-        userProfile = profile;
-      } else {
-        console.log(`[DEBUG] Profile not found for user ${currentUserId} in /likes, creating one.`);
-        userProfile = await Profile.findOneAndUpdate(
-          { user: currentUserId },
-          { 
-            $setOnInsert: {
-              user: currentUserId,
-              location: { type: 'Point', coordinates: [0,0] as [number, number], city: 'Unknown', country: 'Unknown' },
-              interests: [],
-              likedBy: [] as ProfileLikeInfo[],
-              rejected: [] as IProfileReject[],
-              lastActive: new Date(),
-              createdAt: new Date()
-            }
-          },
-          { new: true, upsert: true, setDefaultsOnInsert: true }
-        );
-        if (!userProfile) {
-          throw new Error('Failed to create profile for current user in /likes endpoint');
-        }
-      }
-    } catch (profileError: unknown) {
-      console.error('Error fetching or creating profile in /likes:', profileError);
-      return res.status(500).json({
+    const currentUser = await User.findById(currentUserId)
+        .populate<{ likedBy: { user: IUser, likedAt: Date }[] }>({ // Populate the user field within likedBy
+            path: 'likedBy.user', // Path to populate within the likedBy array
+            select: 'name dateOfBirth gender photos' // Fields to select from the User who liked
+        });
+
+    if (!currentUser) {
+      return res.status(404).json({
         success: false,
-        message: 'Error accessing user profile information.',
-        error: profileError instanceof Error ? profileError.message : 'Unknown profile error'
+        message: 'Current user not found'
       });
     }
 
-    if (!userProfile) {
-        return res.status(500).json({
-            success: false,
-            message: 'User profile could not be determined.'
-        });
-    }
-    const finalUserProfile: IProfile = userProfile;
+    // Ensure likedBy array exists, even if empty
+    currentUser.likedBy = currentUser.likedBy || [];
 
-    // Define PopulatedUser interface here, before its use
-    interface PopulatedUser {
-      _id: mongoose.Types.ObjectId;
-      name: string;
-      dateOfBirth: string;
-      gender: string;
-    }
-
-    // Define the type for a profile document where the 'user' field is populated
-    type PopulatedProfile = Omit<IProfile, 'user'> & { user?: PopulatedUser };
-
-    const profilesWhoLikedCurrentUser = await Profile.find({
-      'likedBy.profile': finalUserProfile._id
-    }).populate('user', 'name dateOfBirth gender'); // Populate user field
-
-    if (!profilesWhoLikedCurrentUser || profilesWhoLikedCurrentUser.length === 0) {
+    if (currentUser.likedBy.length === 0) {
       return res.json({
         success: true,
         likes: [],
         message: 'No one has liked your profile yet'
       });
     }
-    
-    interface IProfileLikeResponse {
-      _id: mongoose.Types.ObjectId;
-      user: PopulatedUser;
-      photos: IPhoto[];
-      bio?: string;
-      location?: { city?: string; country?: string };
-      interests?: string[];
-      occupation?: string;
-      education?: string;
-      likedAt: Date;
-    }
 
-    const formattedLikes: IProfileLikeResponse[] = (profilesWhoLikedCurrentUser as unknown as (PopulatedProfile & mongoose.Document)[]) // More forceful assertion
-      .filter((profile): profile is PopulatedProfile & mongoose.Document & { user: PopulatedUser } => !!profile.user)
-      .map((profile) => {
-        const likeEntry = finalUserProfile.likedBy.find(
-          (like: ProfileLikeInfo) => like.profile && like.profile.toString() === profile._id.toString()
-        );
+    // Format the response
+    const likesResponse = currentUser.likedBy
+      .filter(likeEntry => likeEntry.user) // Ensure the user who liked is populated
+      .map((likeEntry) => {
+        const liker = likeEntry.user as IUser; // The user who performed the like
+        const mainPhoto = liker.photos?.find((p: IPhoto) => p.isMain);
+
+        let age;
+        if (liker.dateOfBirth) {
+            const birthDate = new Date(liker.dateOfBirth);
+            const today = new Date();
+            age = today.getFullYear() - birthDate.getFullYear();
+            const m = today.getMonth() - birthDate.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+                age--;
+            }
+        }
 
         return {
-          _id: profile._id,
-          user: profile.user, // profile.user is now correctly typed as PopulatedUser
-          photos: profile.photos,
-          bio: profile.bio,
-          location: profile.location ? { city: profile.location.city, country: profile.location.country } : undefined,
-          interests: profile.interests,
-          occupation: profile.occupation,
-          education: profile.education,
-          likedAt: likeEntry ? likeEntry.likedAt : new Date()
+          _id: liker._id, // ID of the user who liked
+          name: liker.name,
+          age: age,
+          gender: liker.gender,
+          photo: mainPhoto ? mainPhoto.url : null,
+          likedAt: likeEntry.likedAt // Timestamp when the like occurred
         };
       });
 
+    // Sort by most recent likes
+    const sortedLikes = likesResponse.sort((a, b) => {
+        const dateA = a.likedAt ? new Date(a.likedAt).getTime() : 0;
+        const dateB = b.likedAt ? new Date(b.likedAt).getTime() : 0;
+        return dateB - dateA;
+    });
+
     res.json({
       success: true,
-      likes: formattedLikes
+      likes: sortedLikes
     });
   } catch (error: unknown) {
     console.error('Get likes error:', error);

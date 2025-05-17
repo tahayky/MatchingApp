@@ -8,7 +8,7 @@ import path from 'path';
 import healthCheckRoutes from './routes/healthCheck';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
-import profilesRoutes from './routes/profiles-ts';
+import userProfileRoutes from './routes/userProfile-ts'; // Renamed import
 import matchesRoutes from './routes/matches-ts';
 import subscriptionRoutes from './routes/subscription';
 import adminRoutes from './routes/admin'; // Import admin routes
@@ -19,7 +19,6 @@ import { setupSwagger } from './swagger';
 // Load the TypeScript models but don't configure routes for them yet
 // This prevents duplicate model registration
 import './models/User';
-import './models/Profile';
 import './models/Match';
 
 // Load environment variables
@@ -62,12 +61,10 @@ app.use('/api/users', userRoutes);
 console.log('Registering subscription routes...');
 app.use('/api/subscription', subscriptionRoutes);
 
-// Keep TypeScript test endpoints for development and testing 
-app.use('/api/profiles/test', profilesRoutes);
+// Keep TypeScript test endpoints for development and testing
+// Routes related to profile are now part of userProfileRoutes
+app.use('/api/users/profile', userProfileRoutes); // Updated route path
 app.use('/api/matches/test', matchesRoutes);
-
-// Use TypeScript implementations for all routes
-app.use('/api/profiles', profilesRoutes);
 
 // TEMPORARY DEBUG ROUTE
 app.get('/api/matches/quota/test-debug', (req: Request, res: Response) => {
