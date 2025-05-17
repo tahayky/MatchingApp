@@ -94,21 +94,33 @@ router.post('/login', async (req: Request, res: Response) => {
 // @desc    Get some admin-specific stats (example)
 // @access  Private (Admin)
 router.get('/stats', isAdminAuthenticated, async (req: Request, res: Response) => {
-  // This route is now protected by isAdminAuthenticated.
-  // req.adminUser will contain the payload from the JWT if authentication was successful.
-  // Example: const adminId = (req as any).adminUser.id;
+  try {
+    const totalUsers = await User.countDocuments();
+    
+    const activeSubscribers = await User.countDocuments({
+      subscriptionTier: { $ne: 'FREE' }, // Not on the FREE tier
+      $or: [ // And either expiry is not set (if that means active) or is in the future
+        { subscriptionExpiresAt: null },
+        { subscriptionExpiresAt: { $exists: false } }, // if it might not exist at all
+        { subscriptionExpiresAt: { $gt: new Date() } }
+      ]
+    });
 
-  // In a real application, fetch and return actual stats
-  res.json({
-    success: true,
-    message: 'Admin stats endpoint reached successfully.',
-    data: {
-      totalUsers: 1000, // Placeholder
-      activeSubscriptions: 500, // Placeholder
-      serverTime: new Date().toISOString(),
-      adminInfo: (req as any).adminUser // Send back admin info from token for demo
-    }
-  });
+    res.json({
+      success: true,
+      message: 'Admin stats fetched successfully.',
+      data: {
+        totalUsers: totalUsers,
+        activeSubscriptions: activeSubscribers,
+        serverTime: new Date().toISOString(),
+        adminInfo: (req as any).adminUser
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching admin stats:', error);
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    res.status(500).json({ success: false, message });
+  }
 });
 
 // Simple health check for the admin route itself
