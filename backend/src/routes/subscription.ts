@@ -1,11 +1,12 @@
 import express, { Request, Response, Router } from 'express';
 import mongoose from 'mongoose';
 import User, { IUser } from '../models/User';
+import SubscriptionPlan, { ISubscriptionPlan } from '../models/SubscriptionPlan'; // Import the DB model
 import { protect } from '../middleware/auth';
 import { isAdmin } from '../middleware/admin';
 import * as subscriptionConfig from '../config/subscriptionTiers';
 // Dinamik olarak import etmek için
-let { subscriptionTiers, getSubscriptionTier, getDefaultTier } = subscriptionConfig;
+let { subscriptionTiers, getSubscriptionTier, getDefaultTier } = subscriptionConfig; // Reinstate subscriptionTiers for other functions
 import fs from 'fs';
 import path from 'path';
 
@@ -22,12 +23,28 @@ const router: Router = express.Router();
 // @access  Public
 router.get('/tiers', async (req: Request, res: Response) => {
   try {
+    const activePlansFromDB = await SubscriptionPlan.find({ isActive: true }).sort({ order: 1 }).lean();
+
+    // Map database plans to the structure expected by the mobile app
+    const tiersForMobile = activePlansFromDB.map(plan => ({
+      id: plan.planId.toLowerCase(), // Mobile app might expect lowercase 'free', 'plus', 'premium'
+      name: plan.name,
+      dailyLikeQuota: plan.dailyLikeQuota,
+      description: plan.description,
+      features: plan.features,
+      price: plan.price ? { // Ensure price object and its properties are correctly mapped
+        monthly: plan.price.monthly,
+        yearly: plan.price.yearly,
+      } : undefined,
+      // Add any other fields the mobile app might expect if different from ISubscriptionPlan
+    }));
+
     return res.json({
       success: true,
-      tiers: Object.values(subscriptionTiers)
+      tiers: tiersForMobile
     });
   } catch (error: unknown) {
-    console.error('Get subscription tiers error:', error);
+    console.error('Get subscription tiers from DB error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return res.status(500).json({
       success: false,

@@ -25,22 +25,37 @@ const SubscriptionInfo: React.FC<SubscriptionInfoProps> = ({ onUpgradePress }) =
     
     try {
       // Get subscription status
+      console.log('[SubscriptionInfo] Fetching subscription status...');
       const statusResponse = await subscriptionService.getSubscriptionStatus();
+      console.log('[SubscriptionInfo] Status Response:', JSON.stringify(statusResponse, null, 2));
       if (statusResponse.success && statusResponse.subscription) {
         setSubscriptionStatus(statusResponse.subscription);
         setQuotaInfo(statusResponse.subscription.quotaInfo);
+        console.log('[SubscriptionInfo] Subscription Status Set:', JSON.stringify(statusResponse.subscription, null, 2));
+      } else {
+        console.warn('[SubscriptionInfo] Failed to get subscription status or no subscription data.');
       }
       
       // Get available tiers
+      console.log('[SubscriptionInfo] Fetching available tiers...');
       const tiersResponse = await subscriptionService.getSubscriptionTiers();
+      console.log('[SubscriptionInfo] Tiers Response:', JSON.stringify(tiersResponse, null, 2));
       if (tiersResponse.success && tiersResponse.tiers) {
         setAvailableTiers(tiersResponse.tiers);
+        console.log('[SubscriptionInfo] Available Tiers Set:', JSON.stringify(tiersResponse.tiers, null, 2));
+      } else {
+        console.warn('[SubscriptionInfo] Failed to get available tiers or no tiers data.');
       }
       
       // Get the most up-to-date quota info
+      console.log('[SubscriptionInfo] Fetching like quota...');
       const quotaResponse = await subscriptionService.getLikeQuota();
+      console.log('[SubscriptionInfo] Quota Response:', JSON.stringify(quotaResponse, null, 2));
       if (quotaResponse.success && quotaResponse.quotaInfo) {
         setQuotaInfo(quotaResponse.quotaInfo);
+        console.log('[SubscriptionInfo] Quota Info Set:', JSON.stringify(quotaResponse.quotaInfo, null, 2));
+      } else {
+        console.warn('[SubscriptionInfo] Failed to get like quota or no quota info.');
       }
     } catch (err: any) {
       console.error('Subscription data fetch error:', err);
