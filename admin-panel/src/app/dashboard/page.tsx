@@ -25,6 +25,8 @@ interface DashboardData {
   stats?: {
     totalUsers?: number;
     activeSubscriptions?: number;
+    totalMatches?: number; // Added
+    totalLikes?: number;   // Added
     // Add more stats as provided by the backend
   };
   // recentActivity?: ActivityData[]; // Add if backend provides this
@@ -101,15 +103,14 @@ export default function DashboardPage() {
     ? [
         { name: 'Active Users', value: dashboardData.stats.totalUsers ?? 'N/A', status: 'neutral' },
         { name: 'Subscribers', value: dashboardData.stats.activeSubscriptions ?? 'N/A', status: 'neutral' },
-        // Add more stats here as they become available from the backend
-        { name: 'Daily Likes', value: 'Loading...', status: 'neutral' },
-        { name: 'Matches', value: 'Loading...', status: 'neutral' },
+        { name: 'Total Likes', value: dashboardData.stats.totalLikes ?? 'N/A', status: 'neutral' }, // Changed from Daily Likes
+        { name: 'Total Matches', value: dashboardData.stats.totalMatches ?? 'N/A', status: 'neutral' }, // Changed from Matches
       ]
     : [ // Default structure while loading or if error
         { name: 'Active Users', value: 'Loading...', status: 'neutral' },
         { name: 'Subscribers', value: 'Loading...', status: 'neutral' },
-        { name: 'Daily Likes', value: 'Loading...', status: 'neutral' },
-        { name: 'Matches', value: 'Loading...', status: 'neutral' },
+        { name: 'Total Likes', value: 'Loading...', status: 'neutral' },
+        { name: 'Total Matches', value: 'Loading...', status: 'neutral' },
       ];
 
   // Mock recent activity for now, as backend endpoint doesn't exist yet

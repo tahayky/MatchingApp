@@ -4,6 +4,8 @@ import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import User, { IUser } from '../models/User'; // Import User model and IUser interface
 import SubscriptionPlan, { ISubscriptionPlan } from '../models/SubscriptionPlan'; // Import SubscriptionPlan model
+import Profile, { IPhoto } from '../models/Profile'; // Import Profile model and IPhoto
+import Match from '../models/Match'; // Import Match model
 import { isAdminAuthenticated } from '../middleware/adminAuth'; // Import the new middleware
 
 // Load environment variables
@@ -98,13 +100,16 @@ router.get('/stats', isAdminAuthenticated, async (req: Request, res: Response) =
     const totalUsers = await User.countDocuments();
     
     const activeSubscribers = await User.countDocuments({
-      subscriptionTier: { $ne: 'FREE' }, // Not on the FREE tier
-      $or: [ // And either expiry is not set (if that means active) or is in the future
+      subscriptionTier: { $ne: 'FREE' },
+      $or: [
         { subscriptionExpiresAt: null },
-        { subscriptionExpiresAt: { $exists: false } }, // if it might not exist at all
+        { subscriptionExpiresAt: { $exists: false } },
         { subscriptionExpiresAt: { $gt: new Date() } }
       ]
     });
+
+    const totalMatches = await Match.countDocuments({ isMatch: true });
+    const totalLikes = await Match.countDocuments({ action: 'like' }); // Total like actions recorded
 
     res.json({
       success: true,
@@ -112,6 +117,8 @@ router.get('/stats', isAdminAuthenticated, async (req: Request, res: Response) =
       data: {
         totalUsers: totalUsers,
         activeSubscriptions: activeSubscribers,
+        totalMatches: totalMatches,
+        totalLikes: totalLikes, // Using this as a proxy for "likes" stat
         serverTime: new Date().toISOString(),
         adminInfo: (req as any).adminUser
       }
@@ -150,18 +157,40 @@ router.get('/users', isAdminAuthenticated, async (req: Request, res: Response) =
       ];
     }
 
-    const users = await User.find(query)
+    const usersFromDB = await User.find(query)
       .select('-password') // Exclude password
       .sort({ [sortBy]: order })
       .skip((page - 1) * limit)
       .limit(limit)
-      .populate('profile', 'photos bio lastActive'); // Populate some profile info
+      .lean(); // Use .lean() for plain JS objects, easier to modify
 
     const totalUsers = await User.countDocuments(query);
 
+    // Manually add some profile information if needed for the admin list
+    const usersWithProfileInfo = await Promise.all(
+      usersFromDB.map(async (user) => {
+        const profile = await Profile.findOne({ user: user._id }).select('photos bio lastActive').lean(); // Removed isProfileComplete from select as it's on User
+        return {
+          ...user, // Includes user.isProfileComplete and user.lastActive (as a fallback)
+          profileData: profile ? {
+            mainPhotoUrl: profile.photos?.find((p: IPhoto) => p.isMain)?.url || profile.photos?.[0]?.url,
+            bioExcerpt: profile.bio?.substring(0, 50) + (profile.bio && profile.bio.length > 50 ? '...' : ''),
+            lastActive: profile.lastActive, // Prioritize profile's lastActive
+          } : null,
+        };
+      })
+    );
+
+    // Further refine the data to ensure lastActive is consistently chosen
+    const finalUserData = usersWithProfileInfo.map(u => ({
+      ...u,
+      lastActive: u.profileData?.lastActive || u.updatedAt, // Use profile's lastActive if available, else user's updatedAt
+    }));
+
+
     res.json({
       success: true,
-      data: users,
+      data: finalUserData,
       pagination: {
         currentPage: page,
         totalPages: Math.ceil(totalUsers / limit),
@@ -321,5 +350,51 @@ router.delete('/subscription-plans/:id', isAdminAuthenticated, async (req: Reque
     res.status(500).json({ success: false, message });
   }
 });
+
+// @route   GET /api/admin/user-quotas
+// @desc    Get users with their like quota information
+// @access  Private (Admin)
+router.get('/user-quotas', isAdminAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const searchQuery = req.query.search as string || '';
+    const sortBy = req.query.sortBy as string || 'name'; // Default sort by name
+    const order = req.query.order === 'desc' ? -1 : 1; // Default asc
+
+    const query: mongoose.FilterQuery<IUser> = {};
+    if (searchQuery) {
+      query.$or = [
+        { name: { $regex: searchQuery, $options: 'i' } },
+        { email: { $regex: searchQuery, $options: 'i' } },
+      ];
+    }
+
+    const users = await User.find(query)
+      .select('name email subscriptionTier dailyLikeQuota remainingLikes likesResetTime')
+      .sort({ [sortBy]: order })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
+
+    const totalUsers = await User.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: users,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalUsers / limit),
+        totalUsers,
+        limit,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching user quotas for admin:', error);
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    res.status(500).json({ success: false, message });
+  }
+});
+
 
 export default router;
