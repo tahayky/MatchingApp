@@ -1,6 +1,9 @@
 import express, { Request, Response, Router } from 'express';
+import mongoose from 'mongoose'; // Import mongoose
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
+import User, { IUser } from '../models/User'; // Import User model and IUser interface
+import SubscriptionPlan, { ISubscriptionPlan } from '../models/SubscriptionPlan'; // Import SubscriptionPlan model
 import { isAdminAuthenticated } from '../middleware/adminAuth'; // Import the new middleware
 
 // Load environment variables
@@ -114,6 +117,197 @@ router.get('/stats', isAdminAuthenticated, async (req: Request, res: Response) =
 // @access Public
 router.get('/health', (req: Request, res: Response) => {
   res.status(200).json({ success: true, message: 'Admin route health check OK' });
+});
+
+// @route   GET /api/admin/users
+// @desc    Get all users (for admin panel) with pagination and search
+// @access  Private (Admin)
+router.get('/users', isAdminAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const searchQuery = req.query.search as string || '';
+    const sortBy = req.query.sortBy as string || 'createdAt';
+    const order = req.query.order === 'asc' ? 1 : -1;
+
+    const query: mongoose.FilterQuery<IUser> = {};
+    if (searchQuery) {
+      query.$or = [
+        { name: { $regex: searchQuery, $options: 'i' } },
+        { email: { $regex: searchQuery, $options: 'i' } },
+      ];
+    }
+
+    const users = await User.find(query)
+      .select('-password') // Exclude password
+      .sort({ [sortBy]: order })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .populate('profile', 'photos bio lastActive'); // Populate some profile info
+
+    const totalUsers = await User.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: users,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalUsers / limit),
+        totalUsers,
+        limit,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching users for admin:', error);
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    res.status(500).json({ success: false, message });
+  }
+});
+
+// --- Subscription Plan CRUD Endpoints ---
+
+// @route   POST /api/admin/subscription-plans
+// @desc    Create a new subscription plan
+// @access  Private (Admin)
+router.post('/subscription-plans', isAdminAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const { planId, name, dailyLikeQuota, description, features, price, isActive, order } = req.body;
+
+    // Basic validation
+    if (!planId || !name || dailyLikeQuota === undefined || !description) {
+      return res.status(400).json({ success: false, message: 'Missing required fields: planId, name, dailyLikeQuota, description' });
+    }
+
+    const existingPlan = await SubscriptionPlan.findOne({ planId: planId.toUpperCase() });
+    if (existingPlan) {
+      return res.status(400).json({ success: false, message: `Plan with planId '${planId}' already exists.` });
+    }
+
+    const newPlan = new SubscriptionPlan({
+      planId: planId.toUpperCase(),
+      name,
+      dailyLikeQuota,
+      description,
+      features: features || [],
+      price: price || {}, // Ensure price is an object, even if empty
+      isActive: isActive !== undefined ? isActive : true,
+      order: order || 0,
+    });
+
+    await newPlan.save();
+    res.status(201).json({ success: true, message: 'Subscription plan created successfully', data: newPlan });
+  } catch (error: unknown) {
+    console.error('Error creating subscription plan:', error);
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    res.status(500).json({ success: false, message });
+  }
+});
+
+// @route   GET /api/admin/subscription-plans
+// @desc    Get all subscription plans
+// @access  Private (Admin)
+router.get('/subscription-plans', isAdminAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const plans = await SubscriptionPlan.find().sort({ order: 1, name: 1 });
+    res.json({ success: true, data: plans });
+  } catch (error: unknown) {
+    console.error('Error fetching subscription plans:', error);
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    res.status(500).json({ success: false, message });
+  }
+});
+
+// @route   GET /api/admin/subscription-plans/:id
+// @desc    Get a single subscription plan by its MongoDB _id
+// @access  Private (Admin)
+router.get('/subscription-plans/:id', isAdminAuthenticated, async (req: Request, res: Response) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({ success: false, message: 'Invalid plan ID format.' });
+    }
+    const plan = await SubscriptionPlan.findById(req.params.id);
+    if (!plan) {
+      return res.status(404).json({ success: false, message: 'Subscription plan not found' });
+    }
+    res.json({ success: true, data: plan });
+  } catch (error: unknown) {
+    console.error('Error fetching subscription plan:', error);
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    res.status(500).json({ success: false, message });
+  }
+});
+
+// @route   PUT /api/admin/subscription-plans/:id
+// @desc    Update a subscription plan by its MongoDB _id
+// @access  Private (Admin)
+router.put('/subscription-plans/:id', isAdminAuthenticated, async (req: Request, res: Response) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({ success: false, message: 'Invalid plan ID format.' });
+    }
+    const { planId, name, dailyLikeQuota, description, features, price, isActive, order } = req.body;
+
+    const updateData: Partial<ISubscriptionPlan> = {};
+    if (name !== undefined) updateData.name = name;
+    if (dailyLikeQuota !== undefined) updateData.dailyLikeQuota = dailyLikeQuota;
+    if (description !== undefined) updateData.description = description;
+    if (features !== undefined) updateData.features = features;
+    if (price !== undefined) updateData.price = price;
+    if (isActive !== undefined) updateData.isActive = isActive;
+    if (order !== undefined) updateData.order = order;
+    
+    // Handle planId update carefully: ensure new planId is unique if changed
+    if (planId !== undefined) {
+        const currentPlan = await SubscriptionPlan.findById(req.params.id);
+        if (currentPlan && currentPlan.planId !== planId.toUpperCase()) {
+            const conflictingPlan = await SubscriptionPlan.findOne({ planId: planId.toUpperCase(), _id: { $ne: req.params.id } });
+            if (conflictingPlan) {
+                return res.status(400).json({ success: false, message: `Another plan with planId '${planId.toUpperCase()}' already exists.` });
+            }
+            updateData.planId = planId.toUpperCase();
+        } else if (!currentPlan) {
+             return res.status(404).json({ success: false, message: 'Subscription plan not found for planId update check' });
+        }
+    }
+
+
+    const updatedPlan = await SubscriptionPlan.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedPlan) {
+      return res.status(404).json({ success: false, message: 'Subscription plan not found' });
+    }
+    res.json({ success: true, message: 'Subscription plan updated successfully', data: updatedPlan });
+  } catch (error: unknown) {
+    console.error('Error updating subscription plan:', error);
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    res.status(500).json({ success: false, message });
+  }
+});
+
+// @route   DELETE /api/admin/subscription-plans/:id
+// @desc    Delete a subscription plan by its MongoDB _id
+// @access  Private (Admin)
+router.delete('/subscription-plans/:id', isAdminAuthenticated, async (req: Request, res: Response) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({ success: false, message: 'Invalid plan ID format.' });
+    }
+    
+    const plan = await SubscriptionPlan.findByIdAndDelete(req.params.id);
+    if (!plan) {
+      return res.status(404).json({ success: false, message: 'Subscription plan not found' });
+    }
+    res.json({ success: true, message: 'Subscription plan deleted successfully' });
+
+  } catch (error: unknown) {
+    console.error('Error deleting subscription plan:', error);
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    res.status(500).json({ success: false, message });
+  }
 });
 
 export default router;
