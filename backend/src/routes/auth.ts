@@ -1,6 +1,7 @@
 import express, { Request, Response, Router } from 'express';
 import jwt from 'jsonwebtoken';
 import User, { IUser } from '../models/User';
+import SubscriptionPlan, { ISubscriptionPlan } from '../models/SubscriptionPlan'; // Import SubscriptionPlan
 import { protect } from '../middleware/auth';
 
 const router: Router = express.Router();
@@ -38,6 +39,19 @@ router.post('/register', async (req: Request, res: Response) => {
       });
     }
 
+    // Find the default subscription plan
+    const defaultPlan = await SubscriptionPlan.findOne({ isDefault: true, isActive: true });
+
+    if (!defaultPlan) {
+      // This case should ideally be handled by ensuring a default plan always exists.
+      // For now, log an error and prevent registration or fall back to a hardcoded basic plan.
+      console.error('CRITICAL: No default subscription plan found or active. User registration cannot proceed with dynamic default tier.');
+      return res.status(500).json({
+        success: false,
+        message: 'Server configuration error: No default subscription plan set.'
+      });
+    }
+
     // Create new user
     const user = await User.create({
       email,
@@ -45,7 +59,11 @@ router.post('/register', async (req: Request, res: Response) => {
       name,
       dateOfBirth,
       gender,
-      interestedIn
+      interestedIn,
+      subscriptionTier: defaultPlan.planId, // Assign default plan ID
+      dailyLikeQuota: defaultPlan.dailyLikeQuota, // Assign quota from default plan
+      remainingLikes: defaultPlan.dailyLikeQuota, // Assign remaining likes from default plan
+      // likesResetTime will be set by its default in the User model
     });
 
     if (user) {

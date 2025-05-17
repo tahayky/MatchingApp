@@ -21,6 +21,7 @@ interface SubscriptionPlanData {
   };
   isActive: boolean;
   order: number;
+  isDefault: boolean; // Added to reflect backend model
   createdAt?: string; // Optional on create/edit, present on fetch
   updatedAt?: string; // Optional on create/edit, present on fetch
 }
@@ -37,6 +38,7 @@ const initialEditValues: EditableSubscriptionPlanData = {
   price: { monthly: 0, yearly: 0 },
   isActive: true,
   order: 0,
+  isDefault: false, // Added default for the new field
 };
 
 export default function SubscriptionsPage() {
@@ -266,6 +268,44 @@ export default function SubscriptionsPage() {
     }
   };
 
+const handleSetDefaultPlan = async (planIdToSetAsDefault: string) => {
+    if (!window.confirm("Are you sure you want to set this plan as the default? Any existing default plan will be unset.")) {
+        return;
+    }
+    setSaving(true); // Use general saving state or a specific one
+    setError(null);
+    setSuccessMessage(null);
+    const token = localStorage.getItem(ADMIN_AUTH_TOKEN_KEY);
+
+    if (!token) {
+        router.push('/login');
+        setSaving(false);
+        return;
+    }
+
+    try {
+        const response = await fetch(getApiUrl(`admin/subscription-plans/${planIdToSetAsDefault}/set-default`), {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+            },
+        });
+
+        const result = await response.json();
+        if (response.ok && result.success) {
+            setSuccessMessage(result.message || 'Plan set as default successfully!');
+            fetchPlans(); // Refresh the list to show the new default plan
+        } else {
+            throw new Error(result.message || 'Failed to set plan as default.');
+        }
+    } catch (err: unknown) {
+        console.error('Error setting default plan:', err);
+        setError(err instanceof Error ? err.message : 'An unknown error occurred while setting default plan.');
+    } finally {
+        setSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -382,7 +422,14 @@ export default function SubscriptionsPage() {
                 plan.planId === 'PREMIUM' ? 'bg-purple-700' : 'bg-teal-600' // Default color for other plans
               }`}>
                 <CardTitle className="flex justify-between items-center">
-                  <span>{plan.name} ({plan.planId})</span>
+                  <div>
+                    <span>{plan.name} ({plan.planId})</span>
+                    {plan.isDefault && (
+                      <span className="ml-2 px-2 py-0.5 bg-yellow-400 text-yellow-800 text-xs font-semibold rounded-full animate-pulse">
+                        Default
+                      </span>
+                    )}
+                  </div>
                   {plan.price && plan.price.monthly !== undefined && (
                     <span className="text-2xl">${plan.price.monthly.toFixed(2)}/mo</span>
                   )}
@@ -431,25 +478,45 @@ export default function SubscriptionsPage() {
                      <span className="text-sm font-medium">Order:</span>
                      <span className="text-sm">{plan.order}</span>
                   </div>
+                   {plan.isDefault && (
+                    <div className="flex justify-center items-center mt-2 p-2 bg-yellow-100 border border-yellow-300 rounded-md">
+                        <span className="text-sm font-semibold text-yellow-700">This is the default plan for new users.</span>
+                    </div>
+                   )}
                 </div>
               </CardContent>
               
-              <CardFooter className="border-t p-4 flex justify-end space-x-2">
+              <CardFooter className="border-t p-4 flex flex-wrap justify-end items-center gap-2">
                   {/* Buttons now correctly call the refactored handlers */}
-                  <>
+                  
+                    <button
+                      onClick={() => handleSetDefaultPlan(plan._id)}
+                      className={`px-3 py-1.5 rounded text-sm text-white font-medium ${
+                        plan.isDefault || !plan.isActive
+                          ? 'bg-gray-300 cursor-not-allowed'
+                          : 'bg-green-500 hover:bg-green-600 focus:ring-2 focus:ring-green-500 focus:ring-opacity-50'
+                      } transition-colors duration-150 ease-in-out`}
+                      disabled={plan.isDefault || !plan.isActive || saving}
+                      title={plan.isDefault ? "This plan is already the default" : (!plan.isActive ? "Plan must be active to set as default" : "Set as default plan")}
+                    >
+                      {saving && !plan.isDefault ? 'Setting...' : (plan.isDefault ? '✓ Default' : 'Set Default')}
+                    </button>
                     <button
                       onClick={() => handleEditPlan(plan)}
-                      className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm"
+                      className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-colors duration-150 ease-in-out"
+                      disabled={saving}
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => handleDeletePlan(plan._id)}
-                      className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded text-sm"
+                      className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded text-sm font-medium focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 transition-colors duration-150 ease-in-out"
+                      disabled={saving || plan.isDefault} // Prevent deleting the default plan directly
+                      title={plan.isDefault ? "Cannot delete the default plan. Set another plan as default first." : "Delete this plan"}
                     >
                       Delete
                     </button>
-                  </>
+                  
               </CardFooter>
             </Card>
           ))}

@@ -351,6 +351,61 @@ router.delete('/subscription-plans/:id', isAdminAuthenticated, async (req: Reque
   }
 });
 
+// @route   PUT /api/admin/subscription-plans/:id/set-default
+// @desc    Set a subscription plan as the default for new users
+// @access  Private (Admin)
+router.put('/subscription-plans/:id/set-default', isAdminAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const planIdToSetAsDefault = req.params.id;
+
+    if (!mongoose.Types.ObjectId.isValid(planIdToSetAsDefault)) {
+      return res.status(400).json({ success: false, message: 'Invalid plan ID format.' });
+    }
+
+    // Start a session for atomic operation
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      // Step 1: Set isDefault to false for all other plans
+      await SubscriptionPlan.updateMany(
+        { _id: { $ne: planIdToSetAsDefault }, isDefault: true },
+        { $set: { isDefault: false } },
+        { session }
+      );
+
+      // Step 2: Set the specified plan as default
+      const updatedPlan = await SubscriptionPlan.findByIdAndUpdate(
+        planIdToSetAsDefault,
+        { $set: { isDefault: true, isActive: true } }, // Also ensure the default plan is active
+        { new: true, session, runValidators: true }
+      );
+
+      if (!updatedPlan) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(404).json({ success: false, message: 'Subscription plan not found or could not be updated.' });
+      }
+
+      await session.commitTransaction();
+      session.endSession();
+
+      res.json({ success: true, message: `Plan '${updatedPlan.name}' set as default successfully.`, data: updatedPlan });
+
+    } catch (error) {
+      await session.abortTransaction();
+      session.endSession();
+      console.error('Error setting default subscription plan:', error);
+      const message = error instanceof Error ? error.message : 'An unexpected error occurred during the transaction.';
+      res.status(500).json({ success: false, message });
+    }
+  } catch (error: unknown) {
+    console.error('Error initiating set default subscription plan operation:', error);
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    res.status(500).json({ success: false, message });
+  }
+});
+
 // @route   GET /api/admin/user-quotas
 // @desc    Get users with their like quota information
 // @access  Private (Admin)

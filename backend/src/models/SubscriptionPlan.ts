@@ -14,6 +14,7 @@ export interface ISubscriptionPlan extends Document {
   price?: IPrice;
   isActive: boolean; // To allow deactivating plans without deleting
   order: number; // For display order in UI
+  isDefault: boolean; // To mark a plan as the default for new users
   createdAt: Date;
   updatedAt: Date;
 }
@@ -61,12 +62,17 @@ const SubscriptionPlanSchema: Schema = new Schema({
   order: { // For controlling display order
     type: Number,
     default: 0,
+  },
+  isDefault: {
+    type: Boolean,
+    default: false,
   }
 }, { timestamps: true });
 
 // Ensure planId is indexed for quick lookups
 SubscriptionPlanSchema.index({ planId: 1 });
 SubscriptionPlanSchema.index({ isActive: 1, order: 1 }); // For fetching active plans in order
+SubscriptionPlanSchema.index({ isDefault: 1 }); // For quickly finding the default plan
 
 const SubscriptionPlan: Model<ISubscriptionPlan> = mongoose.model<ISubscriptionPlan>('SubscriptionPlan', SubscriptionPlanSchema);
 
