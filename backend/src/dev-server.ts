@@ -8,7 +8,7 @@ import path from 'path';
 import healthCheckRoutes from './routes/healthCheck';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
-import profilesRoutes from './routes/profiles-ts';
+import userProfileRoutes from './routes/userProfile-ts'; // Renamed import
 import matchesRoutes from './routes/matches-ts';
 
 // Load environment variables
@@ -43,7 +43,7 @@ app.get('/', (req: Request, res: Response) => {
 app.use('/api/health', healthCheckRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/profiles', profilesRoutes);
+app.use('/api/users/profile', userProfileRoutes); // Updated route path
 app.use('/api/matches', matchesRoutes);
 
 // Connect to MongoDB

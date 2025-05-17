@@ -2,9 +2,8 @@ import express, { Request, Response, Router } from 'express';
 import mongoose from 'mongoose'; // Import mongoose
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
-import User, { IUser } from '../models/User'; // Import User model and IUser interface
+import User, { IUser, IPhoto } from '../models/User'; // Import User model and IUser interface, IPhoto
 import SubscriptionPlan, { ISubscriptionPlan } from '../models/SubscriptionPlan'; // Import SubscriptionPlan model
-import Profile, { IPhoto } from '../models/Profile'; // Import Profile model and IPhoto
 import Match from '../models/Match'; // Import Match model
 import { isAdminAuthenticated } from '../middleware/adminAuth'; // Import the new middleware
 
@@ -167,26 +166,18 @@ router.get('/users', isAdminAuthenticated, async (req: Request, res: Response) =
     const totalUsers = await User.countDocuments(query);
 
     // Manually add some profile information if needed for the admin list
-    const usersWithProfileInfo = await Promise.all(
-      usersFromDB.map(async (user) => {
-        const profile = await Profile.findOne({ user: user._id }).select('photos bio lastActive').lean(); // Removed isProfileComplete from select as it's on User
-        return {
-          ...user, // Includes user.isProfileComplete and user.lastActive (as a fallback)
-          profileData: profile ? {
-            mainPhotoUrl: profile.photos?.find((p: IPhoto) => p.isMain)?.url || profile.photos?.[0]?.url,
-            bioExcerpt: profile.bio?.substring(0, 50) + (profile.bio && profile.bio.length > 50 ? '...' : ''),
-            lastActive: profile.lastActive, // Prioritize profile's lastActive
-          } : null,
-        };
-      })
-    );
-
-    // Further refine the data to ensure lastActive is consistently chosen
-    const finalUserData = usersWithProfileInfo.map(u => ({
-      ...u,
-      lastActive: u.profileData?.lastActive || u.updatedAt, // Use profile's lastActive if available, else user's updatedAt
-    }));
-
+    // Directly use fields from the User model as profile info is merged
+    const finalUserData = usersFromDB.map(user => {
+      const mainPhoto = user.photos?.find((p: IPhoto) => p.isMain);
+      return {
+        ...user,
+        // profileData is no longer a separate object, access fields directly from user
+        mainPhotoUrl: mainPhoto?.url || user.photos?.[0]?.url,
+        bioExcerpt: user.bio?.substring(0, 50) + (user.bio && user.bio.length > 50 ? '...' : ''),
+        // lastActive is already on the user model, prioritize it. Fallback to updatedAt.
+        lastActive: user.lastActive || user.updatedAt,
+      };
+    });
 
     res.json({
       success: true,

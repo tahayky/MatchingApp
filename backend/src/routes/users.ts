@@ -1,6 +1,5 @@
 import express, { Request, Response, Router } from 'express';
-import User, { IUser } from '../models/User';
-import Profile from '../models/Profile';
+import User, { IUser } from '../models/User'; // Profile is now part of User
 import { protect } from '../middleware/auth';
 
 const router: Router = express.Router();
@@ -80,17 +79,24 @@ router.get('/:id', protect, async (req: Request, res: Response) => {
       });
     }
 
-    // Get basic profile info
-    const profile = await Profile.findOne({ user: req.params.id })
-      .select('bio photos occupation education interests');
-
+    // Profile info is now part of the user object
     res.json({
       success: true,
       user: {
         _id: user._id,
         name: user.name,
         gender: user.gender,
-        profile: profile || null
+        // Directly access profile fields from the user object
+        bio: user.bio,
+        photos: user.photos,
+        occupation: user.occupation,
+        education: user.education,
+        interests: user.interests,
+        // Add other relevant profile fields as needed
+        location: user.location,
+        preferences: user.preferences,
+        lastActive: user.lastActive,
+        isProfileComplete: user.isProfileComplete
       }
     });
   } catch (error: unknown) {
@@ -175,10 +181,7 @@ router.delete('/me', protect, async (req: AuthRequest, res: Response) => {
       });
     }
     
-    // Delete user's profile
-    await Profile.findOneAndDelete({ user: req.user._id });
-    
-    // Delete user
+    // Delete user (profile data is part of the user document and will be deleted with it)
     await User.findByIdAndDelete(req.user._id);
 
     res.json({
