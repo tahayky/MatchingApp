@@ -60,13 +60,38 @@ router.post('/register', async (req: Request, res: Response) => {
       dateOfBirth,
       gender,
       interestedIn,
-      subscriptionTier: defaultPlan.planId, // Assign default plan ID
-      dailyLikeQuota: defaultPlan.dailyLikeQuota, // Assign quota from default plan
-      remainingLikes: defaultPlan.dailyLikeQuota, // Assign remaining likes from default plan
+      // Subscription fields
+      subscriptionTier: defaultPlan.planId,
+      dailyLikeQuota: defaultPlan.dailyLikeQuota,
+      remainingLikes: defaultPlan.dailyLikeQuota,
       // likesResetTime will be set by its default in the User model
+
+      // Initialize merged profile fields
+      photos: [], // Default to empty array
+      bio: '',    // Default to empty string
+      location: { // Default location (e.g., [0,0] or prompt user to set later)
+        type: 'Point',
+        coordinates: [0, 0],
+        city: '',
+        country: '',
+      },
+      interests: [], // Default to empty array
+      occupation: '',
+      education: '',
+      height: undefined, // Or a default like 0 if preferred
+      preferences: { // Default preferences
+        ageRange: { min: 18, max: 99 },
+        distance: 50, // Default distance in km
+      },
+      likedBy: [],
+      rejected: [],
+      lastActive: new Date(),
+      isProfileComplete: false, // Explicitly set to false, user needs to complete it
     });
 
     if (user) {
+      // Return a more complete user object, but still exclude sensitive data like full profile details initially
+      // The client can fetch full profile details via /api/users/profile/me if needed
       res.status(201).json({
         success: true,
         user: {
@@ -74,6 +99,7 @@ router.post('/register', async (req: Request, res: Response) => {
           name: user.name,
           email: user.email,
           gender: user.gender,
+          isProfileComplete: user.isProfileComplete, // Include this status
           token: generateToken(user._id)
         }
       });
