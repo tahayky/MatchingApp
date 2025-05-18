@@ -1,5 +1,6 @@
 import express, { Request, Response, Router } from 'express';
 import rateLimit from 'express-rate-limit';
+import AppSetting from '../models/AppSetting'; // Import AppSetting model
 import mongoose from 'mongoose';
 import multer from 'multer';
 import path from 'path';
@@ -249,25 +250,85 @@ router.post('/photos', protect, upload.single('photo'), async (req: AuthRequest,
 // @route   GET /api/users/profile/discover
 // @desc    Get profiles for discovery feed based on preferences
 // @access  Private
-const discoverLimiter = rateLimit({
+
+// Default rate limit settings (can be overridden by database)
+const DEFAULT_DISCOVER_RATE_LIMIT_CONFIG = {
   windowMs: 10 * 1000, // 10 seconds
-  max: 5, // limit each IP/user to 5 requests per windowMs
+  max: 5,
   message: {
     success: false,
     message: 'Too many discovery requests, please try again after 10 seconds.',
   },
-  keyGenerator: (req: Request) => {
-    // Use user ID for rate limiting if available (after protect middleware), otherwise IP
-    const authReq = req as AuthRequest;
-    return authReq.user?._id?.toString() || req.ip;
-  },
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+};
+const DISCOVER_RATE_LIMIT_KEY = 'discoverRateLimit';
+
+// Function to create a rate limiter with potentially dynamic configuration
+// This function will be called once when the module is loaded.
+// For truly dynamic updates without server restart, a more complex setup would be needed.
+async function createDiscoverLimiter() {
+  let config = { ...DEFAULT_DISCOVER_RATE_LIMIT_CONFIG };
+  try {
+    const dbSetting = await AppSetting.findOne({ key: DISCOVER_RATE_LIMIT_KEY });
+    if (dbSetting && dbSetting.value && typeof dbSetting.value.windowMs === 'number' && typeof dbSetting.value.max === 'number') {
+      config.windowMs = dbSetting.value.windowMs;
+      config.max = dbSetting.value.max;
+      if (dbSetting.value.message && typeof dbSetting.value.message === 'string') {
+        config.message.message = dbSetting.value.message;
+      }
+      console.log(`[RateLimit] Using DB config for /discover: ${config.max} req / ${config.windowMs / 1000}s`);
+    } else {
+      console.log(`[RateLimit] Using default config for /discover: ${config.max} req / ${config.windowMs / 1000}s`);
+    }
+  } catch (error) {
+    console.error('[RateLimit] Error fetching discover rate limit settings, using defaults:', error);
+  }
+
+  return rateLimit({
+    windowMs: config.windowMs,
+    max: config.max,
+    message: config.message,
+    keyGenerator: (req: Request) => {
+      const authReq = req as AuthRequest;
+      return authReq.user?._id?.toString() || req.ip;
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+}
+
+// Initialize the limiter when the module loads
+// Note: This means changes from admin panel require a server restart to take effect on the limiter.
+let discoverLimiterInstance: ReturnType<typeof rateLimit>;
+createDiscoverLimiter().then(limiter => {
+  discoverLimiterInstance = limiter;
+}).catch(error => {
+  console.error("Failed to initialize discoverLimiter, using default hardcoded limiter as fallback", error);
+  discoverLimiterInstance = rateLimit({ // Fallback limiter
+    windowMs: DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs,
+    max: DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.max,
+    message: DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message,
+     keyGenerator: (req: Request) => {
+      const authReq = req as AuthRequest;
+      return authReq.user?._id?.toString() || req.ip;
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
 });
 
-router.get('/discover', protect, discoverLimiter, async (req: AuthRequest, res: Response) => {
+router.get('/discover', protect, (req, res, next) => {
+  // Apply the limiter. If it's not initialized yet (should be quick), this might cause an issue.
+  // A more robust solution might involve a placeholder or ensuring initialization before routes are hit.
+  // For simplicity now, we assume discoverLimiterInstance is initialized.
+  if (discoverLimiterInstance) {
+    discoverLimiterInstance(req, res, next);
+  } else {
+    // Fallback if initialization is somehow still pending or failed catastrophically
+    console.warn("[RateLimit] discoverLimiterInstance not ready, bypassing rate limit for this request.");
+    next();
+  }
+}, async (req: AuthRequest, res: Response) => {
   try {
-    // The 'protect' middleware already handles this, but an extra check doesn't hurt.
     if (!req.user || !req.user._id) {
       return res.status(401).json({
         success: false,

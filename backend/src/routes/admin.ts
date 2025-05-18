@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import User, { IUser, IPhoto } from '../models/User'; // Import User model and IUser interface, IPhoto
 import SubscriptionPlan, { ISubscriptionPlan } from '../models/SubscriptionPlan'; // Import SubscriptionPlan model
+import AppSetting, { IAppSetting } from '../models/AppSetting'; // Import AppSetting model
 import Match from '../models/Match'; // Import Match model
 import { isAdminAuthenticated } from '../middleware/adminAuth'; // Import the new middleware
 
@@ -437,6 +438,73 @@ router.get('/user-quotas', isAdminAuthenticated, async (req: Request, res: Respo
     });
   } catch (error) {
     console.error('Error fetching user quotas for admin:', error);
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    res.status(500).json({ success: false, message });
+  }
+});
+
+
+// --- App Settings Endpoints ---
+
+const DISCOVER_RATE_LIMIT_KEY = 'discoverRateLimit';
+const DEFAULT_DISCOVER_RATE_LIMIT = {
+  windowMs: 10 * 1000, // 10 seconds
+  max: 5, // 5 requests
+  message: 'Too many discovery requests, please try again after 10 seconds.',
+};
+
+// @route   GET /api/admin/settings/discover-rate-limit
+// @desc    Get the current discover profiles rate limit settings
+// @access  Private (Admin)
+router.get('/settings/discover-rate-limit', isAdminAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const setting = await AppSetting.findOne({ key: DISCOVER_RATE_LIMIT_KEY });
+    if (setting) {
+      res.json({ success: true, data: setting.value });
+    } else {
+      // If not set, return default values (but don't save them here)
+      res.json({ success: true, data: DEFAULT_DISCOVER_RATE_LIMIT, message: 'Using default settings as no custom configuration was found.' });
+    }
+  } catch (error: unknown) {
+    console.error('Error fetching discover rate limit settings:', error);
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    res.status(500).json({ success: false, message });
+  }
+});
+
+// @route   PUT /api/admin/settings/discover-rate-limit
+// @desc    Update the discover profiles rate limit settings
+// @access  Private (Admin)
+router.put('/settings/discover-rate-limit', isAdminAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const { windowMs, max, message } = req.body;
+
+    if (typeof windowMs !== 'number' || typeof max !== 'number') {
+      return res.status(400).json({ success: false, message: 'windowMs and max must be numbers.' });
+    }
+    if (windowMs < 1000 || max < 1) {
+        return res.status(400).json({ success: false, message: 'windowMs must be at least 1000ms and max must be at least 1.' });
+    }
+
+    const value: any = { windowMs, max };
+    if (message && typeof message === 'string') {
+      value.message = message;
+    } else {
+      value.message = DEFAULT_DISCOVER_RATE_LIMIT.message; // Use default message if not provided or invalid
+    }
+    
+    const updatedSetting = await AppSetting.findOneAndUpdate(
+      { key: DISCOVER_RATE_LIMIT_KEY },
+      {
+        value,
+        description: 'Rate limit settings for the discover profiles endpoint. Value contains { windowMs: milliseconds, max: requests, message: string }.'
+      },
+      { new: true, upsert: true, runValidators: true }
+    );
+
+    res.json({ success: true, message: 'Discover rate limit settings updated successfully.', data: updatedSetting.value });
+  } catch (error: unknown) {
+    console.error('Error updating discover rate limit settings:', error);
     const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
     res.status(500).json({ success: false, message });
   }
