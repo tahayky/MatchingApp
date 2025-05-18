@@ -38,6 +38,12 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
+
+// Explicitly handle OPTIONS requests for all routes after CORS setup
+// This ensures OPTIONS requests are terminated correctly with 204 No Content
+// and appropriate CORS headers, preventing them from hitting auth middleware.
+app.options('*', cors()); // Enable pre-flight across-the-board
+
 app.use(cookieParser()); // Use cookie-parser middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
