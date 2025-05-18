@@ -1,6 +1,7 @@
 import express, { Request, Response, Application } from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
+import cookieParser from 'cookie-parser'; // Import cookie-parser
 import dotenv from 'dotenv';
 import path from 'path';
 
@@ -37,6 +38,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
+app.use(cookieParser()); // Use cookie-parser middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
