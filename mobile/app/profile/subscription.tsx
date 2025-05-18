@@ -14,47 +14,47 @@ export default function SubscriptionScreen() {
       // In a real app, this would navigate to a payment screen
       // For now, let's simulate an immediate upgrade
       Alert.alert(
-        'Abonelik Yükseltme',
-        `${tierId.toUpperCase()} aboneliğe yükseltmek istiyor musunuz?`,
+        'Upgrade Subscription',
+        `Do you want to upgrade to ${tierId.toUpperCase()}?`,
         [
-          { text: 'İptal', style: 'cancel' },
-          { 
-            text: 'Yükselt', 
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Upgrade',
             onPress: async () => {
               try {
                 // Show loading
-                Alert.alert('İşleniyor', 'Abonelik yükseltiliyor...');
+                Alert.alert('Processing', 'Upgrading subscription...');
                 
                 // Call the upgrade endpoint (1 month duration)
                 const response = await subscriptionService.upgradeSubscription(tierId, 1);
                 
                 if (response.success) {
                   Alert.alert(
-                    'Başarılı', 
-                    'Abonelik başarıyla yükseltildi!',
-                    [{ text: 'Tamam', onPress: () => navigation.goBack() }]
+                    'Success',
+                    'Subscription upgraded successfully!',
+                    [{ text: 'OK', onPress: () => navigation.goBack() }]
                   );
                 } else {
-                  Alert.alert('Hata', response.message || 'Abonelik yükseltme başarısız oldu.');
+                  Alert.alert('Error', response.message || 'Subscription upgrade failed.');
                 }
               } catch (error: any) {
-                Alert.alert('Hata', error.message || 'Bir sorun oluştu, lütfen daha sonra tekrar deneyin.');
+                Alert.alert('Error', error.message || 'An error occurred. Please try again later.');
               }
-            } 
+            }
           }
         ]
       );
     } catch (error: any) {
-      Alert.alert('Hata', error.message || 'Bir sorun oluştu, lütfen daha sonra tekrar deneyin.');
+      Alert.alert('Error', error.message || 'An error occurred. Please try again later.');
     }
   };
 
   return (
     <ThemedView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <ThemedText style={styles.header}>Abonelik</ThemedText>
+        <ThemedText style={styles.header}>Subscription</ThemedText>
         <ThemedText style={styles.description}>
-          Premium abonelikle daha fazla beğeni hakkı ve özel özellikler kazanın.
+          Get more likes and special features with a premium subscription.
         </ThemedText>
         
         <SubscriptionInfo onUpgradePress={handleUpgradePress} />

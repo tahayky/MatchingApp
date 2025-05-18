@@ -24,7 +24,7 @@ export default function ProfileScreen() {
 
   const [authenticated, setAuthenticated] = useState<boolean>(false);
 
-  // İlk yüklemede kimlik doğrulama kontrolü
+  // Initial authentication check
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -32,14 +32,14 @@ export default function ProfileScreen() {
         setAuthenticated(isAuth);
         
         if (isAuth) {
-          // Sadece giriş yapıldıysa veri yükle
+          // Load data only if logged in
           loadUserData();
         } else {
-          // Giriş yapılmadıysa yükleme durumunu kapat
+          // Close loading state if not logged in
           setLoading(false);
         }
       } catch (error) {
-        console.log('Kimlik doğrulama kontrolü hatası (sessiz)');
+        console.log('Authentication check error (silent)');
         setAuthenticated(false);
         setLoading(false);
       }
@@ -48,18 +48,18 @@ export default function ProfileScreen() {
     checkAuth();
   }, []);
   
-  // Sayfaya her gelindiğinde ve kimlik doğrulanmışsa yeniden veri yükle
+  // Reload data when screen is focused and authenticated
   useFocusEffect(
     React.useCallback(() => {
       if (authenticated) {
         loadUserData();
       }
-      return () => {};
+      return () => {}; // Cleanup function (optional)
     }, [authenticated])
   );
 
   const loadUserData = async () => {
-    // Güvenlik kontrolü - sadece kimlik doğrulanmışsa API istekleri yap
+    // Security check - only make API requests if authenticated
     if (!authenticated) {
       setLoading(false);
       return;
@@ -82,7 +82,7 @@ export default function ProfileScreen() {
         }
       } catch (error) {
         // Profile might not exist yet, that's ok
-        console.log('Profile not found, may need to be created (sessiz)');
+        console.log('Profile not found, may need to be created (silent)');
       }
       
       // Get subscription data
@@ -99,11 +99,11 @@ export default function ProfileScreen() {
           setQuotaInfo(quotaResponse.quotaInfo);
         }
       } catch (error) {
-        console.log('Abonelik bilgisi alınamadı (sessiz)');
+        console.log('Could not retrieve subscription info (silent)');
       }
     } catch (error) {
-      console.log('Kullanıcı verisi yükleme hatası (sessiz)');
-      // Müşteriye hata mesajı gösterme, sadece iç log tutma
+      console.log('User data loading error (silent)');
+      // Do not show error message to client, just internal logging
     } finally {
       setLoading(false);
     }
@@ -159,13 +159,13 @@ export default function ProfileScreen() {
           
           {/* Subscription Info Card */}
           <ThemedView style={styles.subscriptionCard}>
-            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Abonelik Durumu</ThemedText>
+            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Subscription Status</ThemedText>
             <ThemedView style={styles.detailRow}>
-              <ThemedText style={styles.detailLabel}>Paket:</ThemedText>
+              <ThemedText style={styles.detailLabel}>Plan:</ThemedText>
               <ThemedView style={[
                 styles.tierBadge,
-                subscriptionTier === 'PREMIUM' ? styles.premiumBadge : 
-                subscriptionTier === 'PLUS' ? styles.plusBadge : styles.freeBadge
+                subscriptionTier.toUpperCase() === 'PREMIUM' ? styles.premiumBadge :
+                subscriptionTier.toUpperCase() === 'PLUS' ? styles.plusBadge : styles.freeBadge
               ]}>
                 <ThemedText style={styles.tierText}>{subscriptionTier}</ThemedText>
               </ThemedView>
@@ -174,39 +174,39 @@ export default function ProfileScreen() {
             {quotaInfo && (
               <ThemedView>
                 <ThemedView style={styles.detailRow}>
-                  <ThemedText style={styles.detailLabel}>Beğeni Hakkı:</ThemedText>
+                  <ThemedText style={styles.detailLabel}>Likes:</ThemedText>
                   <ThemedText>{quotaInfo.remaining} / {quotaInfo.total}</ThemedText>
                 </ThemedView>
                 
                 <ThemedView style={styles.quotaBarContainer}>
-                  <ThemedView 
+                  <ThemedView
                     style={[
-                      styles.quotaBar, 
-                      { 
-                        width: `${(quotaInfo.remaining / quotaInfo.total) * 100}%`,
-                        backgroundColor: quotaInfo.remaining > quotaInfo.total / 2 ? '#4CAF50' : 
-                                        quotaInfo.remaining > quotaInfo.total / 5 ? '#FFC107' : '#F44336'
+                      styles.quotaBar,
+                      {
+                        width: `${quotaInfo.total > 0 ? (quotaInfo.remaining / quotaInfo.total) * 100 : 0}%`, // Avoid division by zero
+                        backgroundColor: quotaInfo.total > 0 && quotaInfo.remaining > quotaInfo.total / 2 ? '#4CAF50' :
+                                        quotaInfo.total > 0 && quotaInfo.remaining > quotaInfo.total / 5 ? '#FFC107' : '#F44336'
                       }
-                    ]} 
+                    ]}
                   />
                 </ThemedView>
                 
                 <ThemedText style={styles.quotaReset}>
-                  Yenileme: {subscriptionService.formatTimeUntilReset(quotaInfo)}
+                  Resets in: {subscriptionService.formatTimeUntilReset(quotaInfo)}
                 </ThemedText>
               </ThemedView>
             )}
             
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[
-                styles.button, 
+                styles.button,
                 styles.subscriptionButton,
-                { backgroundColor: subscriptionTier === 'FREE' ? '#673AB7' : '#2196F3' }
+                { backgroundColor: subscriptionTier.toUpperCase() === 'FREE' ? '#673AB7' : '#2196F3' }
               ]}
               onPress={() => router.push('/profile/subscription')}
             >
               <ThemedText style={styles.buttonText}>
-                {subscriptionTier === 'FREE' ? 'Premium\'a Yükselt' : 'Aboneliği Yönet'}
+                {subscriptionTier.toUpperCase() === 'FREE' ? 'Upgrade to Premium' : 'Manage Subscription'}
               </ThemedText>
             </TouchableOpacity>
           </ThemedView>
@@ -251,17 +251,17 @@ export default function ProfileScreen() {
             </ThemedView>
           )}
           
-          {!profile && (
-            <ThemedView style={styles.emptyState}>
-              <ThemedText>You haven't created a profile yet.</ThemedText>
-              <TouchableOpacity style={styles.button} onPress={handleEditProfile}>
-                <ThemedText style={styles.buttonText}>Create Profile</ThemedText>
-              </TouchableOpacity>
-            </ThemedView>
-          )}
+          {/* The "Create Profile" button section is removed.
+               Profile creation should be part of the registration flow.
+               The `profile` state here now refers to profile data within the `user` object.
+               We can check if essential profile fields are present on the `user` object
+               to decide if "Edit Profile" should be shown, or assume if `user` object exists,
+               basic profile fields were set during registration.
+               For simplicity, we'll assume `user` object implies profile exists for editing.
+           */}
           
           <ThemedView style={styles.actionsContainer}>
-            {profile && (
+            {user && ( // Show "Edit Profile" if the user object (which contains profile data) exists
               <TouchableOpacity style={styles.button} onPress={handleEditProfile}>
                 <ThemedText style={styles.buttonText}>Edit Profile</ThemedText>
               </TouchableOpacity>
@@ -271,7 +271,7 @@ export default function ProfileScreen() {
               style={styles.button}
               onPress={() => router.push('/profile/settings')}
             >
-              <ThemedText style={styles.buttonText}>Ayarlar</ThemedText>
+              <ThemedText style={styles.buttonText}>Settings</ThemedText>
             </TouchableOpacity>
             
             <TouchableOpacity 

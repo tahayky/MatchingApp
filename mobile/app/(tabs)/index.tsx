@@ -15,139 +15,139 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState<boolean>(true);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
-  // İlk yüklemede oturum kontrolü - API bağlantısı tekrar etkinleştirildi
+  // Initial auth check - API connection re-enabled
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // Kimlik kontrolü
+        // Auth check
         const authenticated = await authService.isAuthenticated();
         setIsAuthenticated(authenticated);
 
         if (authenticated) {
-          // API'den profil getir (test profilleri yedek)
-          console.log('Kimlik doğrulandı, API\'den profil getiriliyor...');
+          // Fetch profiles from API (mock profiles as fallback)
+          console.log('Authenticated, fetching profiles from API...');
           fetchProfiles();
           fetchMatches();
         } else {
-          // Oturum açılmamışsa doğrudan yükleme durumunu kapat
+          // If not logged in, directly close loading state
           setLoading(false);
         }
       } catch (error) {
         console.error("Auth check failed:", error);
-        // Hata olsa bile yüklemeyi bitir ve test profillerini kullan
-        setProfiles(mockProfiles);
+        // Even on error, finish loading and use mock profiles
+        setProfiles(mockProfiles); // Consider removing mock data if API is primary
         setLoading(false);
       }
     };
 
-    // Yükleme durumunu başlatma
+    // Initialize loading state
     setLoading(true);
 
-    // Kısa bekleme sonrası kimlik doğrulama
+    // Auth after a short delay
     const authTimeout = setTimeout(() => {
-      console.log('Kimlik doğrulama ve profil yükleme başlatılıyor');
+      console.log('Initiating authentication and profile loading');
       checkAuth();
     }, 1000);
 
-    // Temizleme fonksiyonu
+    // Cleanup function
     return () => {
       clearTimeout(authTimeout);
     };
   }, []);
 
-  // ODAKLANMA HOOK'U TAMAMEN DEVRE DIŞI - Sonsuz yükleme döngüsünü önlemek için
+  // FOCUS HOOK FULLY DISABLED - To prevent infinite loading loop
   // useFocusEffect(
   //   useCallback(() => {
-  //     // DEVRE DIŞI - Sorun giderilene kadar bu hook çalışmayacak
+  //     // DISABLED - This hook will not run until the issue is resolved
   //     return () => {};
   //   }, [])
   // );
 
-  // Profil veri durumunu izleyen state
+  // State to track profile fetch status
   const [fetchAttempted, setFetchAttempted] = useState<boolean>(false);
 
-  // Gerçek API çağrısı yapan fetchProfiles
+  // fetchProfiles that makes the actual API call
   const fetchProfiles = async () => {
     try {
-      console.log('fetchProfiles çağrıldı - Backend\'den profilleri getirme');
+      console.log('fetchProfiles called - Fetching profiles from backend');
       setLoading(true);
 
-      // API'ye sadece bir kez istek yapmak için durumu güncelle
+      // Update status to make only one API request
       setFetchAttempted(true);
 
-      // API istek limiti (maksimum 5 saniye)
+      // API request limit (max 5 seconds)
       const timeoutPromise = new Promise<void>((_, reject) => {
         setTimeout(() => reject(new Error('API request timeout')), 5000);
       });
 
-      // API isteği gönderiliyor
-      console.log('API isteği gönderiliyor: discover profilleri');
+      // Sending API request
+      console.log('Sending API request: discover profiles');
       const response = await Promise.race([
         profileService.discoverProfiles(),
         timeoutPromise
       ]) as any;
 
-      // API yanıtı inceleniyor
-      console.log(`API yanıtı alındı! Başarı: ${response.success}`);
+      // Examining API response
+      console.log(`API response received! Success: ${response.success}`);
 
       if (response.success && response.profiles?.length > 0) {
-        console.log(`API profilleri sayısı: ${response.profiles.length}`);
+        console.log(`Number of API profiles: ${response.profiles.length}`);
 
-        // İlk profil örneği yazdırılıyor
-        console.log('İlk profil örneği:', JSON.stringify(response.profiles[0], null, 2));
+        // Printing first profile example
+        console.log('First profile example:', JSON.stringify(response.profiles[0], null, 2));
 
-        // API'den gelen profilleri işle - image kısmını doğru formatta ayarla
+        // Process profiles from API - set image part to correct format
         const formattedProfiles: ProfileData[] = response.profiles.map((profile: any) => {
-          console.log(`Profil ID: ${profile._id} için kart oluşturuluyor`);
+          console.log(`Creating card for Profile ID: ${profile._id}`);
 
-          // Fotoğraf kontrolü - daha direkt yaklaşım
-          const defaultImage = require('@/assets/images/react-logo.png');
+          // Photo check - more direct approach
+          const defaultImage = require('@/assets/images/react-logo.png'); // Consider a more generic placeholder
           let profileImage = defaultImage;
 
-          // Profil fotoğrafı varsa URI'yi kullan (ancak require formatında ImageSourcePropType olmalı)
+          // If profile photo exists, use URI (must be ImageSourcePropType in require format)
           const mainPhoto = profile.photos?.find((photo: any) => photo.isMain);
           if (mainPhoto?.url) {
             profileImage = { uri: mainPhoto.url };
-            console.log(`${profile.user.name} için fotoğraf URL'si: ${mainPhoto.url}`);
+            console.log(`Photo URL for ${profile.user.name}: ${mainPhoto.url}`);
           } else {
-            console.log(`${profile.user.name} için fotoğraf yok, varsayılan kullanılıyor`);
+            console.log(`No photo for ${profile.user.name}, using default`);
           }
 
           return {
             id: profile._id,
-            name: profile.user.name || "İsimsiz",
+            name: profile.user.name || "Unnamed",
             age: calculateAge(profile.user.dateOfBirth),
-            image: profileImage, // Düzeltilmiş resim formatı
-            bio: profile.bio || 'Bio bilgisi yok',
+            image: profileImage, // Corrected image format
+            bio: profile.bio || 'No bio information',
             distance: profile.location?.city
               ? `${profile.location.city}, ${profile.location.country || ''}`
-              : 'Konum bilgisi yok'
+              : 'Location unknown'
           };
         });
 
-        // Rasgele sıralama işlemi ekle
+        // Add shuffle operation
         const shuffledProfiles = [...formattedProfiles].sort(() => Math.random() - 0.5);
         setProfiles(shuffledProfiles);
-        console.log(`${shuffledProfiles.length} adet profil API'den başarıyla yüklendi ve karıştırıldı`);
+        console.log(`${shuffledProfiles.length} profiles successfully loaded from API and shuffled`);
       } else {
-        // API'dan profil dönmezse boş dizi kullan
-        console.log('API\'den profil bulunamadı');
+        // If no profiles return from API, use empty array
+        console.log('No profiles found from API');
         setProfiles([]);
       }
     } catch (error) {
-      console.log('API hatası:', error);
-      // Hata durumunda boş dizi kullan
+      console.log('API error:', error);
+      // Use empty array on error
       setProfiles([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // API ile eşleşmeleri getirmeyi deneyen fetchMatches
+  // fetchMatches that tries to get matches from API
   const fetchMatches = async () => {
-    console.log('fetchMatches çağrıldı - API\'den eşleşmeler getiriliyor...');
+    console.log('fetchMatches called - Fetching matches from API...');
     try {
-      // API isteği ile timeout arasında yarış
+      // Race between API request and timeout
       const timeoutPromise = new Promise<void>((_, reject) => {
         setTimeout(() => reject(new Error('API request timeout')), 3000);
       });
@@ -159,97 +159,97 @@ export default function HomeScreen() {
 
       if (response.success) {
         setMatches(response.matches || []);
-        console.log(`${response.matches?.length || 0} adet eşleşme API'den başarıyla yüklendi`);
+        console.log(`${response.matches?.length || 0} matches successfully loaded from API`);
       } else {
-        // Başarısız olursa boş dizi kullan
+        // Use empty array on failure
         setMatches([]);
       }
     } catch (error) {
-      console.error('API hatası - eşleşmeler getirilemedi:', error);
+      console.error('API error - could not fetch matches:', error);
       setMatches([]);
     }
   };
 
-  // Backend'e gerçek API istekleri gönderen swipe işlemleri
+  // Swipe operations that send actual API requests to backend
   const handleSwipeLeft = async (profile: ProfileData) => {
-    console.log(`${profile.name} profilini geçiyorum - API isteği`);
+    console.log(`Passing profile ${profile.name} - API request`);
     try {
-      // API isteği gönder
+      // Send API request
       await matchService.likeOrPassUser({
         targetUserId: profile.id,
         action: 'pass'
       });
     } catch (error) {
-      console.log(`API hatası, işlem loglandı: ${error}`);
+      console.log(`API error, action logged: ${error}`);
     }
   };
 
   const handleSwipeRight = async (profile: ProfileData) => {
-    console.log(`${profile.name} profilini beğeniyorum - API isteği`);
+    console.log(`Liking profile ${profile.name} - API request`);
 
     try {
-      // API isteği gönder
+      // Send API request
       const response = await matchService.likeOrPassUser({
         targetUserId: profile.id,
         action: 'like'
       });
 
-      console.log(`Beğenme API yanıtı:`, response);
+      console.log(`Like API response:`, response);
 
-      // Eşleşme kontrolü
+      // Match check
       if (response.success && response.match.isMatch) {
-        // Başarılı eşleşme
-        console.log(`🎉 EŞLEŞME OLUŞTU! ${profile.name} ile eşleştiniz!`);
+        // Successful match
+        console.log(`🎉 MATCH FORMED! You matched with ${profile.name}!`);
 
-        // Eşleşme durumu alert'i
+        // Match status alert
         Alert.alert(
           "It's a Match!",
           `You and ${profile.name} liked each other!`,
           [
             { text: "Keep Swiping", style: "cancel" },
-            { text: "See Matches", onPress: () => console.log("Navigate to matches") }
+            { text: "See Matches", onPress: () => console.log("Navigate to matches") } // Consider navigation
           ]
         );
 
-        // Eşleşme listesini güncelle
+        // Update match list
         fetchMatches();
       } else if (response.success) {
-        // Başarılı like ama henüz eşleşme yok
-        console.log(`${profile.name} beğenildi, ancak henüz eşleşme yok`);
+        // Successful like but no match yet
+        console.log(`${profile.name} liked, but no match yet`);
       } else {
-        // Başarısız API yanıtı - Beğeni hakkı bitti veya başka bir hata
-        console.log(`API yanıtı başarısız: ${response.message || 'Bilinmeyen hata'}`);
+        // Failed API response - Like quota finished or other error
+        console.log(`API response failed: ${response.message || 'Unknown error'}`);
 
-        // Kullanıcıya beğeni kotasının bittiğini bildir
+        // Notify user that like quota is finished
         Alert.alert(
-          "Beğeni Kotanız Doldu",
-          response.message || "Günlük beğeni hakkınız doldu. Daha fazla kart beğenmek için premium'a yükseltin veya yarın tekrar deneyin.",
+          "Like Quota Reached",
+          response.message || "Your daily like quota is full. Upgrade to premium to like more cards or try again tomorrow.",
           [
-            { text: "Tamam", style: "cancel" },
+            { text: "OK", style: "cancel" },
             {
-              text: "Premium'a Yükselt",
+              text: "Upgrade to Premium",
               onPress: () => {
-                console.log("Subscription ekranına yönlendiriliyor");
-                // Burada abonelik ekranına yönlendirme kodu eklenebilir
+                console.log("Redirecting to Subscription screen");
+                // Add navigation code to subscription screen here
               }
             }
           ]
         );
       }
     } catch (error) {
-      // Ciddi hata - bu API isteğinin tamamen başarısız olduğu anlamına gelir
-      console.log(`Kritik API hatası: ${error}`);
+      // Serious error - means this API request completely failed
+      console.log(`Critical API error: ${error}`);
     }
   };
 
   const handleDeckEmpty = () => {
-    // Sadece ilk denemede API çağrısı yapın, zaten denenmişse tekrar denemeyin
+    // Only make API call on first attempt, don't retry if already attempted
     if (!fetchAttempted) {
-      console.log('Deste boş, API\'den yeni profiller getiriliyor... (ilk deneme)');
+      console.log('Deck empty, fetching new profiles from API... (first attempt)');
       fetchProfiles();
     } else {
-      console.log('Deste boş, ancak zaten API denemesi yapıldı. Tekrar denenmeyecek.');
-      // Bir şey yapma - döngüyü kır
+      console.log('Deck empty, but API attempt already made. Will not retry.');
+      // Do nothing - break the loop
     }
   };
 
@@ -278,9 +278,9 @@ export default function HomeScreen() {
   if (!isAuthenticated) {
     return (
       <ThemedView style={[styles.container, styles.centered]}>
-        <ThemedText type="title">Lütfen Giriş Yapın</ThemedText>
+        <ThemedText type="title">Please Log In</ThemedText>
         <ThemedText style={styles.infoText}>
-          Eşleşmeleri görmek için hesabınıza giriş yapmanız gerekiyor
+          You need to log in to your account to see matches.
         </ThemedText>
       </ThemedView>
     );

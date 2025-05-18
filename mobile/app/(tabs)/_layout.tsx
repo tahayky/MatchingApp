@@ -21,20 +21,20 @@ export default function TabLayout() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        console.log('Tab Layout: Kimlik doğrulama kontrolü yapılıyor');
+        console.log('Tab Layout: Checking authentication');
         const authenticated = await authService.isAuthenticated();
         
-        console.log('Tab Layout: Kimlik durumu:', authenticated ? 'Oturum açık' : 'Oturum kapalı');
+        console.log('Tab Layout: Authentication status:', authenticated ? 'Logged in' : 'Logged out');
         
         setIsAuthenticated(authenticated);
         
         if (!authenticated) {
           // If not authenticated, redirect to auth
-          console.log('Tab Layout: Kullanıcı oturum açmamış, giriş ekranına yönlendiriliyor...');
+          console.log('Tab Layout: User not authenticated, redirecting to login screen...');
           router.replace('/auth');
         }
       } catch (error) {
-        console.error('Tab Layout: Kimlik doğrulama hatası:', error);
+        console.error('Tab Layout: Authentication error:', error);
         setIsAuthenticated(false);
         router.replace('/auth');
       }
@@ -48,7 +48,7 @@ export default function TabLayout() {
     return (
       <ThemedView style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
         <ActivityIndicator size="large" />
-        <ThemedText style={{marginTop: 20}}>Kimlik doğrulanıyor...</ThemedText>
+        <ThemedText style={{marginTop: 20}}>Authenticating...</ThemedText>
       </ThemedView>
     );
   }
@@ -57,7 +57,7 @@ export default function TabLayout() {
   if (isAuthenticated === false) {
     return (
       <ThemedView style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
-        <ThemedText>Oturum açmanız gerekiyor</ThemedText>
+        <ThemedText>You need to log in</ThemedText>
       </ThemedView>
     );
   }

@@ -77,69 +77,37 @@ const swaggerDefinition = {
             type: 'boolean',
             description: 'Whether user has completed their profile',
           },
-        },
-      },
-      Profile: {
-        type: 'object',
-        properties: {
-          _id: {
-            type: 'string',
-            description: 'Profile ID',
-          },
-          user: {
-            type: 'string',
-            description: 'User ID that profile belongs to',
-          },
-          bio: {
-            type: 'string',
-            description: 'User biography',
-          },
-          location: {
-            type: 'object',
-            properties: {
-              type: {
-                type: 'string',
-                enum: ['Point'],
-                description: 'GeoJSON type',
-              },
-              coordinates: {
-                type: 'array',
-                items: {
-                  type: 'number',
-                },
-                description: 'Coordinates [longitude, latitude]',
-              },
-              city: {
-                type: 'string',
-                description: 'City name',
-              },
-              country: {
-                type: 'string',
-                description: 'Country name',
-              },
-            },
-          },
+          // Merged Profile Fields Start
           photos: {
             type: 'array',
             items: {
               type: 'object',
               properties: {
-                url: {
-                  type: 'string',
-                  description: 'Photo URL',
-                },
-                isMain: {
-                  type: 'boolean',
-                  description: 'Whether this is the main profile photo',
-                },
+                url: { type: 'string', description: 'Photo URL' },
+                isMain: { type: 'boolean', description: 'Is this the main photo?' },
+                _id: { type: 'string', description: 'Photo sub-document ID (Mongoose specific)'}
               },
             },
+            description: 'User photos',
+          },
+          bio: {
+            type: 'string',
+            maxLength: 500,
+            description: 'User biography',
+          },
+          location: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['Point'], default: 'Point', description: 'GeoJSON type' },
+              coordinates: { type: 'array', items: { type: 'number' }, default: [0,0], description: '[longitude, latitude]' },
+              city: { type: 'string', description: 'City name' },
+              country: { type: 'string', description: 'Country name' },
+            },
+            description: 'User location',
           },
           interests: {
             type: 'array',
-            items: {
-              type: 'string',
-            },
+            items: { type: 'string' },
             description: 'User interests',
           },
           occupation: {
@@ -160,24 +128,84 @@ const swaggerDefinition = {
               ageRange: {
                 type: 'object',
                 properties: {
-                  min: {
-                    type: 'number',
-                    description: 'Minimum age preference',
-                  },
-                  max: {
-                    type: 'number',
-                    description: 'Maximum age preference',
-                  },
+                  min: { type: 'number', default: 18 },
+                  max: { type: 'number', default: 100 },
                 },
               },
-              distance: {
-                type: 'number',
-                description: 'Maximum distance in km',
-              },
+              distance: { type: 'number', default: 50, description: 'Preferred distance in km' },
             },
+            description: 'User matching preferences',
+          },
+          likedBy: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                user: { type: 'string', description: 'ID of the user who liked this user' },
+                likedAt: { type: 'string', format: 'date-time' },
+              }
+            },
+            description: 'List of users who liked this user',
+          },
+          rejected: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                user: { type: 'string', description: 'ID of the user rejected by this user' },
+                rejectedAt: { type: 'string', format: 'date-time' },
+              }
+            },
+            description: 'List of users this user has rejected',
+          },
+          lastActive: {
+            type: 'string',
+            format: 'date-time',
+            description: 'Last active timestamp',
+          },
+          // Merged Profile Fields End
+          // Subscription and Quota Fields (already part of User model)
+          subscriptionTier: {
+            type: 'string',
+            default: 'FREE',
+            description: 'User subscription tier ID (e.g., FREE, PLUS, PREMIUM)',
+          },
+          subscriptionExpiresAt: {
+            type: 'string',
+            format: 'date-time',
+            nullable: true,
+            description: 'When the current paid subscription expires',
+          },
+          dailyLikeQuota: {
+            type: 'number',
+            description: 'How many likes this user can perform daily based on their tier',
+          },
+          remainingLikes: {
+            type: 'number',
+            description: 'How many likes the user has left for the current period',
+          },
+          likesResetTime: {
+            type: 'string',
+            format: 'date-time',
+            description: 'When the like quota will reset next',
+          },
+          isAdmin: {
+            type: 'boolean',
+            default: false,
+            description: 'Is the user an administrator',
+          },
+          createdAt: {
+            type: 'string',
+            format: 'date-time',
+          },
+          updatedAt: {
+            type: 'string',
+            format: 'date-time',
           },
         },
       },
+      // The separate Profile schema is no longer needed as its fields are merged into User.
+      // Profile: { ... old definition removed ... }
       Match: {
         type: 'object',
         properties: {

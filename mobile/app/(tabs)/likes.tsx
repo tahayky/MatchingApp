@@ -68,18 +68,18 @@ export default function LikesScreen() {
     try {
       setLoading(true);
       
-      console.log('API isteği gönderiliyor: Beğenileri getir');
+      console.log('Sending API request: Get Likes');
       
       try {
         // Use the new /matches/likes endpoint that returns profiles that liked the current user
         const response = await apiClient.get('/matches/likes');
         
         if (response.data.success && response.data.likes?.length > 0) {
-          console.log(`${response.data.likes.length} beğeni başarıyla alındı`);
+          console.log(`${response.data.likes.length} likes successfully received`);
           
-          // API'den gelen beğenileri doğrudan kullan
+          // Use likes directly from API
           const formattedLikes: LikeProfile[] = response.data.likes.map((like: any) => ({
-            userId: like.userId,
+            userId: like.userId || like._id, // Handle if userId is sometimes _id from backend
             name: like.name,
             age: like.age,
             bio: like.bio,
@@ -89,26 +89,26 @@ export default function LikesScreen() {
           
           setLikes(formattedLikes);
         } else {
-          console.log('API\'den beğeni bulunamadı');
+          console.log('No likes found from API');
           setLikes([]);
         }
       } catch (apiError) {
-        console.error("Beğeni API'sine erişilemedi (normal, endpoint henüz çalışmıyor olabilir):", apiError);
+        console.error("Could not access Likes API (normal, endpoint might not be working yet):", apiError);
         
-        // Fallback: Try to get profiles
-        console.log("Alternatif: Profilleri getirme deneniyor...");
-        const profilesResponse = await apiClient.get('/profiles/discover');
+        // Fallback: Try to get profiles (This fallback logic might be removed if /matches/likes is stable)
+        console.log("Alternative: Trying to fetch profiles...");
+        const profilesResponse = await apiClient.get('/profiles/discover'); // This path might need update if it was /api/users/profile/discover
         
         if (profilesResponse.data.success && profilesResponse.data.profiles?.length > 0) {
-          console.log(`${profilesResponse.data.profiles.length} profil alındı`);
+          console.log(`${profilesResponse.data.profiles.length} profiles received`);
           
-          // Test amaçlı ilk 2 profili "beğeniler" gibi göster
+          // Show first 2 profiles as "likes" for testing purposes
           const sampleProfiles = profilesResponse.data.profiles.slice(0, 2);
           
           const formattedLikes: LikeProfile[] = sampleProfiles.map((profile: any) => {
-            const user = profile.user || {};
+            const user = profile.user || {}; // Assuming profile object has a nested user object
             return {
-              userId: profile._id,
+              userId: profile._id, // Use profile._id as userId for these samples
               name: user.name || "Unknown",
               age: calculateAge(user.dateOfBirth || new Date().toISOString()),
               bio: profile.bio || '',
@@ -119,12 +119,12 @@ export default function LikesScreen() {
           
           setLikes(formattedLikes);
         } else {
-          console.log('Profilleriniz bulunamadı, boş liste gösteriliyor');
+          console.log('Your profiles could not be found, showing empty list');
           setLikes([]);
         }
       }
     } catch (error) {
-      console.error("Profil getirme hatası:", error);
+      console.error("Error fetching profiles:", error);
       setLikes([]);
     } finally {
       setLoading(false);

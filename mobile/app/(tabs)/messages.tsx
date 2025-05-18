@@ -66,20 +66,20 @@ export default function MessagesScreen() {
     try {
       setLoading(true);
       
-      console.log('API isteği gönderiliyor: Eşleşmeleri getir');
+      console.log('Sending API request: Get Matches (for conversations)');
       
       // Based on the backend code, there's no specific messages endpoint
       // Use the matches endpoint since matches are people you can message
       const response = await apiClient.get('/matches');
       
       if (response.data.success && response.data.matches?.length > 0) {
-        console.log(`${response.data.matches.length} eşleşme başarıyla alındı`);
+        console.log(`${response.data.matches.length} matches successfully received`);
         
         // Transform matches data to Conversation format
         const formattedConversations: Conversation[] = response.data.matches.map((match: any) => ({
-          id: match.matchId || match._id,
-          participantName: match.name || "Unknown",
-          participantPhoto: match.photoUrl,
+          id: match.matchId || match._id, // Use match._id if matchId is not present
+          participantName: match.targetUser?.name || "Unknown", // Assuming match object has targetUser with name
+          participantPhoto: match.targetUser?.photo, // Assuming match object has targetUser with photo
           lastMessage: "You matched! Start a conversation.", // Default message for new matches
           lastMessageTime: match.matchedAt || new Date().toISOString(),
           unreadCount: 0 // No unread messages initially
@@ -87,11 +87,11 @@ export default function MessagesScreen() {
         
         setConversations(formattedConversations);
       } else {
-        console.log('API\'den eşleşme bulunamadı');
+        console.log('No matches found from API');
         setConversations([]);
       }
     } catch (error) {
-      console.error("Eşleşme getirme hatası:", error);
+      console.error("Error fetching matches:", error);
       setConversations([]);
     } finally {
       setLoading(false);

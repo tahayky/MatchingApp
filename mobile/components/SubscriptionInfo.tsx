@@ -59,7 +59,7 @@ const SubscriptionInfo: React.FC<SubscriptionInfoProps> = ({ onUpgradePress }) =
       }
     } catch (err: any) {
       console.error('Subscription data fetch error:', err);
-      setError('Abonelik bilgileri alınamadı. Lütfen daha sonra tekrar deneyin.');
+      setError('Could not fetch subscription information. Please try again later.');
     } finally {
       setLoading(false);
     }
@@ -70,18 +70,18 @@ const SubscriptionInfo: React.FC<SubscriptionInfoProps> = ({ onUpgradePress }) =
       onUpgradePress(tierId);
     } else {
       Alert.alert(
-        'Abonelik Yükseltme',
-        'Premium özelliklere erişmek için aboneliğinizi yükseltmek ister misiniz?',
+        'Upgrade Subscription',
+        'Would you like to upgrade to access premium features?',
         [
-          { text: 'İptal', style: 'cancel' },
-          { 
-            text: 'Yükselt', 
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Upgrade',
             onPress: () => {
               // Default implementation - just show a mock payment flow alert
-              Alert.alert('Ödeme', 'Ödeme işlemi başlatılıyor...', [
-                { text: 'Tamam' }
+              Alert.alert('Payment', 'Initiating payment process...', [
+                { text: 'OK' }
               ]);
-            } 
+            }
           }
         ]
       );
@@ -92,7 +92,7 @@ const SubscriptionInfo: React.FC<SubscriptionInfoProps> = ({ onUpgradePress }) =
     return (
       <ThemedView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#2196F3" />
-        <ThemedText style={styles.loadingText}>Abonelik bilgileri yükleniyor...</ThemedText>
+        <ThemedText style={styles.loadingText}>Loading subscription information...</ThemedText>
       </ThemedView>
     );
   }
@@ -102,7 +102,7 @@ const SubscriptionInfo: React.FC<SubscriptionInfoProps> = ({ onUpgradePress }) =
       <ThemedView style={styles.errorContainer}>
         <ThemedText style={styles.errorText}>{error}</ThemedText>
         <TouchableOpacity style={styles.retryButton} onPress={fetchSubscriptionData}>
-          <ThemedText style={styles.retryButtonText}>Tekrar Dene</ThemedText>
+          <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
         </TouchableOpacity>
       </ThemedView>
     );
@@ -124,12 +124,12 @@ const SubscriptionInfo: React.FC<SubscriptionInfoProps> = ({ onUpgradePress }) =
       {subscriptionStatus && (
         <ThemedView style={styles.subscriptionCard}>
           <ThemedText style={styles.tierName}>
-            {subscriptionStatus.tier} Üyelik
+            {subscriptionStatus.name || subscriptionStatus.tier}
           </ThemedText>
           
           {subscriptionStatus.expiresAt && (
             <ThemedText style={styles.expiryDate}>
-              Son Kullanma: {new Date(subscriptionStatus.expiresAt).toLocaleDateString()}
+              Expires: {new Date(subscriptionStatus.expiresAt).toLocaleDateString()}
             </ThemedText>
           )}
           
@@ -137,33 +137,33 @@ const SubscriptionInfo: React.FC<SubscriptionInfoProps> = ({ onUpgradePress }) =
           {quotaInfo && (
             <ThemedView style={styles.quotaContainer}>
               <ThemedView style={styles.quotaHeader}>
-                <ThemedText style={styles.quotaTitle}>Beğeni Hakkı</ThemedText>
+                <ThemedText style={styles.quotaTitle}>Likes</ThemedText>
                 <ThemedText style={styles.quotaNumbers}>
                   {quotaInfo.remaining} / {quotaInfo.total}
                 </ThemedText>
               </ThemedView>
               
               <ThemedView style={styles.progressBarContainer}>
-                <ThemedView 
+                <ThemedView
                   style={[
-                    styles.progressBar, 
-                    { 
+                    styles.progressBar,
+                    {
                       width: `${(quotaInfo.remaining / quotaInfo.total) * 100}%`,
                       backgroundColor: getProgressBarColor()
                     }
-                  ]} 
+                  ]}
                 />
               </ThemedView>
               
               <ThemedText style={styles.resetTime}>
-                Yenileme: {subscriptionService.formatTimeUntilReset(quotaInfo)}
+                Resets in: {subscriptionService.formatTimeUntilReset(quotaInfo)}
               </ThemedText>
             </ThemedView>
           )}
           
           {/* Features */}
           <ThemedView style={styles.featuresContainer}>
-            <ThemedText style={styles.featuresTitle}>Özellikler</ThemedText>
+            <ThemedText style={styles.featuresTitle}>Features</ThemedText>
             {subscriptionStatus.features.map((feature, index) => (
               <ThemedView key={index} style={styles.featureItem}>
                 <ThemedText style={styles.featureText}>✓ {feature}</ThemedText>
@@ -172,13 +172,21 @@ const SubscriptionInfo: React.FC<SubscriptionInfoProps> = ({ onUpgradePress }) =
           </ThemedView>
           
           {/* Upgrade Button - only show for FREE tier */}
-          {subscriptionStatus.tier === 'FREE' && (
-            <TouchableOpacity 
+          {subscriptionStatus.tier.toUpperCase() === 'FREE' && ( // Compare with uppercase FREE
+            <TouchableOpacity
               style={styles.upgradeButton}
-              onPress={() => handleUpgradePress('plus')}
+              // Decide which tier to default upgrade to, or make it dynamic
+              onPress={() => {
+                const plusTier = availableTiers.find(t => t.id.toUpperCase() === 'PLUS');
+                if (plusTier) {
+                  handleUpgradePress(plusTier.id);
+                } else {
+                  Alert.alert("Upgrade Error", "Plus tier not available for upgrade.");
+                }
+              }}
             >
               <ThemedText style={styles.upgradeButtonText}>
-                Premium'a Yükselt
+                Upgrade to Premium
               </ThemedText>
             </TouchableOpacity>
           )}
@@ -186,21 +194,21 @@ const SubscriptionInfo: React.FC<SubscriptionInfoProps> = ({ onUpgradePress }) =
       )}
       
       {/* Available Tiers - only show if user has FREE tier */}
-      {subscriptionStatus?.tier === 'FREE' && availableTiers.length > 0 && (
+      {subscriptionStatus?.tier.toUpperCase() === 'FREE' && availableTiers.length > 0 && ( // Compare with uppercase FREE
         <ThemedView style={styles.availableTiersContainer}>
           <ThemedText style={styles.availableTiersTitle}>
-            Abonelik Paketleri
+            Subscription Plans
           </ThemedText>
           
           {availableTiers
-            .filter(tier => tier.id !== 'free') // Don't show free tier in the list
+            .filter(tier => tier.id.toUpperCase() !== 'FREE') // Compare with uppercase FREE
             .map(tier => (
               <ThemedView key={tier.id} style={styles.tierCard}>
                 <ThemedView style={styles.tierHeader}>
                   <ThemedText style={styles.tierCardName}>{tier.name}</ThemedText>
-                  {tier.price && (
+                  {tier.price && tier.price.monthly !== undefined && ( // Check if monthly price exists
                     <ThemedText style={styles.tierPrice}>
-                      {tier.price.monthly}₺/ay
+                      ${tier.price.monthly}/month
                     </ThemedText>
                   )}
                 </ThemedView>
@@ -217,12 +225,12 @@ const SubscriptionInfo: React.FC<SubscriptionInfoProps> = ({ onUpgradePress }) =
                   ))}
                 </ThemedView>
                 
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.tierUpgradeButton}
                   onPress={() => handleUpgradePress(tier.id)}
                 >
                   <ThemedText style={styles.tierUpgradeText}>
-                    Şimdi Yükselt
+                    Upgrade Now
                   </ThemedText>
                 </TouchableOpacity>
               </ThemedView>

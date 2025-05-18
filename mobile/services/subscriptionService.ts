@@ -26,7 +26,8 @@ export interface QuotaInfo {
 }
 
 export interface SubscriptionStatus {
-  tier: string;
+  tier: string; // This is the planId, e.g., 'FREE', 'PLUS'
+  name?: string; // The display name of the tier, e.g., "Free", "Plus"
   expiresAt: string | null;
   hasExpired: boolean;
   features: string[];
@@ -152,24 +153,24 @@ const subscriptionService = {
       const diffMs = resetTime.getTime() - now.getTime();
 
       if (diffMs <= 0) {
-        return 'Şimdi';
+        return 'Now';
       }
 
       const hours = Math.floor(diffMs / (1000 * 60 * 60));
       const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
 
       if (hours > 0) {
-        return `${hours} saat ${minutes} dakika`;
+        return `${hours} hour${hours > 1 ? 's' : ''} ${minutes} minute${minutes > 1 ? 's' : ''}`;
       } else {
-        return `${minutes} dakika`;
+        return `${minutes} minute${minutes > 1 ? 's' : ''}`;
       }
     } else {
       const { hours, minutes } = quotaInfo.timeUntilReset;
 
       if (hours > 0) {
-        return `${hours} saat ${minutes} dakika`;
+        return `${hours} hour${hours > 1 ? 's' : ''} ${minutes} minute${minutes > 1 ? 's' : ''}`;
       } else {
-        return `${minutes} dakika`;
+        return `${minutes} minute${minutes > 1 ? 's' : ''}`;
       }
     }
   }
