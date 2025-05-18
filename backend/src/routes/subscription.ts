@@ -66,35 +66,154 @@ router.get('/status', protect, async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Get the subscription tier details
-    const tierInfo = getSubscriptionTier(req.user.subscriptionTier) || getDefaultTier();
+    // Define a type for the tier information we will use, combining DB and config properties
+    // This helps bridge the gap between ISubscriptionPlan (from DB) and SubscriptionTier (from static config)
+    type EffectiveTierInfo = {
+      planId: string;
+      name: string;
+      dailyLikeQuota: number;
+      features: string[];
+      description?: string;
+      price?: { // Align with IPrice: optional monthly/yearly numbers
+        monthly?: number;
+        yearly?: number;
+      };
+      isActive?: boolean;
+      order?: number;
+      isDefault?: boolean;
+      _id?: mongoose.Types.ObjectId;
+    };
+
+    let effectiveTierInfo: EffectiveTierInfo | null = null;
+
+    // Attempt to get the subscription tier details from the database
+    const userTierFromDB = await SubscriptionPlan.findOne({ planId: req.user.subscriptionTier.toUpperCase(), isActive: true }).lean();
+
+    if (userTierFromDB) {
+      effectiveTierInfo = {
+        planId: userTierFromDB.planId,
+        name: userTierFromDB.name,
+        dailyLikeQuota: userTierFromDB.dailyLikeQuota,
+        features: userTierFromDB.features,
+        description: userTierFromDB.description,
+        price: userTierFromDB.price ? { monthly: userTierFromDB.price.monthly, yearly: userTierFromDB.price.yearly } : undefined, // This mapping is now fine
+        isActive: userTierFromDB.isActive,
+        order: userTierFromDB.order,
+        isDefault: userTierFromDB.isDefault,
+        _id: userTierFromDB._id,
+      };
+    } else {
+      console.warn(`User ${req.user._id}'s tier '${req.user.subscriptionTier}' not found or inactive in DB. Attempting to use default FREE tier from DB.`);
+      const freeTierFromDB = await SubscriptionPlan.findOne({ planId: 'FREE', isActive: true }).lean();
+      if (freeTierFromDB) {
+        effectiveTierInfo = {
+          planId: freeTierFromDB.planId,
+          name: freeTierFromDB.name,
+          dailyLikeQuota: freeTierFromDB.dailyLikeQuota,
+          features: freeTierFromDB.features,
+          description: freeTierFromDB.description,
+          price: freeTierFromDB.price ? { monthly: freeTierFromDB.price.monthly, yearly: freeTierFromDB.price.yearly } : undefined, // This mapping is now fine
+          isActive: freeTierFromDB.isActive,
+          order: freeTierFromDB.order,
+          isDefault: freeTierFromDB.isDefault,
+          _id: freeTierFromDB._id,
+        };
+        if (req.user.subscriptionTier.toUpperCase() !== 'FREE') {
+          console.log(`Updating user ${req.user._id} from invalid tier '${req.user.subscriptionTier}' to '${effectiveTierInfo.planId}'.`);
+          req.user.subscriptionTier = effectiveTierInfo.planId;
+          req.user.dailyLikeQuota = effectiveTierInfo.dailyLikeQuota;
+        }
+      } else {
+        console.error("Critical: Default 'FREE' tier not found or inactive in DB. Falling back to static configuration for FREE tier details.");
+        const staticFreeTier = getDefaultTier();
+        effectiveTierInfo = {
+            planId: staticFreeTier.id.toUpperCase(),
+            name: staticFreeTier.name,
+            dailyLikeQuota: staticFreeTier.dailyLikeQuota,
+            features: staticFreeTier.features,
+            description: staticFreeTier.description,
+            price: staticFreeTier.price ? { monthly: staticFreeTier.price.monthly, yearly: staticFreeTier.price.yearly } : undefined, // This mapping is now fine
+            isActive: true,
+            order: 0,
+            isDefault: true
+        };
+        if (req.user.subscriptionTier.toUpperCase() !== 'FREE') {
+            req.user.subscriptionTier = 'FREE';
+            req.user.dailyLikeQuota = staticFreeTier.dailyLikeQuota;
+        }
+      }
+    }
     
-    // Check if subscription has expired
+    if (!effectiveTierInfo) {
+      console.error(`Critical: Could not determine any active subscription tier for user ${req.user._id} (tier: ${req.user.subscriptionTier}).`);
+      return res.status(500).json({
+        success: false,
+        message: 'Subscription configuration error. Cannot determine user tier.'
+      });
+    }
+
+    // Now, effectiveTierInfo is guaranteed to be non-null.
+    const currentEffectiveTierInfo = effectiveTierInfo;
+
+
     let hasExpired = false;
-    if (req.user.subscriptionExpiresAt && req.user.subscriptionTier !== 'FREE') {
+    if (req.user.subscriptionExpiresAt && currentEffectiveTierInfo.planId !== 'FREE') {
       hasExpired = new Date() > req.user.subscriptionExpiresAt;
       
-      // If expired, downgrade to free tier
       if (hasExpired) {
-        req.user.subscriptionTier = 'FREE';
-        req.user.dailyLikeQuota = getDefaultTier().dailyLikeQuota;
-        
-        // If current remaining likes is greater than new quota, adjust it
+        console.log(`User ${req.user._id}'s subscription for tier '${req.user.subscriptionTier}' has expired. Downgrading.`);
+        const freeTierForDowngrade = await SubscriptionPlan.findOne({ planId: 'FREE', isActive: true }).lean();
+        let newEffectiveTierInfoAfterDowngrade: EffectiveTierInfo;
+
+        if (freeTierForDowngrade) {
+          newEffectiveTierInfoAfterDowngrade = {
+            planId: freeTierForDowngrade.planId, name: freeTierForDowngrade.name, dailyLikeQuota: freeTierForDowngrade.dailyLikeQuota,
+            features: freeTierForDowngrade.features, description: freeTierForDowngrade.description,
+            price: freeTierForDowngrade.price ? { monthly: freeTierForDowngrade.price.monthly, yearly: freeTierForDowngrade.price.yearly } : undefined, // This mapping is now fine
+            isActive: freeTierForDowngrade.isActive, order: freeTierForDowngrade.order, isDefault: freeTierForDowngrade.isDefault, _id: freeTierForDowngrade._id
+          };
+        } else {
+          console.error("Critical: FREE plan not found/inactive in DB for expiration downgrade. Using static FREE tier details.");
+          const staticFreeTier = getDefaultTier();
+          newEffectiveTierInfoAfterDowngrade = {
+              planId: staticFreeTier.id.toUpperCase(), name: staticFreeTier.name, dailyLikeQuota: staticFreeTier.dailyLikeQuota,
+              features: staticFreeTier.features, description: staticFreeTier.description,
+              price: staticFreeTier.price ? { monthly: staticFreeTier.price.monthly, yearly: staticFreeTier.price.yearly } : undefined, // This mapping is now fine
+              isActive: true, order: 0, isDefault: true
+          };
+        }
+        req.user.subscriptionTier = newEffectiveTierInfoAfterDowngrade.planId;
+        req.user.dailyLikeQuota = newEffectiveTierInfoAfterDowngrade.dailyLikeQuota;
+        req.user.subscriptionExpiresAt = undefined;
         if (req.user.remainingLikes > req.user.dailyLikeQuota) {
           req.user.remainingLikes = req.user.dailyLikeQuota;
         }
-        
         await req.user.save();
+        // Update currentEffectiveTierInfo to the downgraded tier for the response
+        effectiveTierInfo = newEffectiveTierInfoAfterDowngrade;
       }
+    }
+    
+    // Re-assign to a new const variable after all modifications to effectiveTierInfo to satisfy TypeScript's null checking for the final response.
+    const finalEffectiveTierInfo = effectiveTierInfo;
+
+    if (req.user.dailyLikeQuota !== finalEffectiveTierInfo.dailyLikeQuota) {
+        console.log(`User ${req.user._id}'s dailyLikeQuota (${req.user.dailyLikeQuota}) for tier ${req.user.subscriptionTier} differs from effective tier '${finalEffectiveTierInfo.planId}' quota (${finalEffectiveTierInfo.dailyLikeQuota}). Updating user's quota.`);
+        req.user.dailyLikeQuota = finalEffectiveTierInfo.dailyLikeQuota;
+        if (req.user.remainingLikes > req.user.dailyLikeQuota) {
+            req.user.remainingLikes = req.user.dailyLikeQuota;
+        }
+        await req.user.save();
     }
 
     return res.json({
       success: true,
       subscription: {
         tier: req.user.subscriptionTier,
+        name: finalEffectiveTierInfo.name,
         expiresAt: req.user.subscriptionExpiresAt || null,
         hasExpired,
-        features: tierInfo.features,
+        features: finalEffectiveTierInfo.features,
         quotaInfo: {
           remaining: req.user.remainingLikes,
           total: req.user.dailyLikeQuota,
