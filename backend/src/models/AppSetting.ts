@@ -27,6 +27,7 @@ const AppSettingSchema: Schema = new Schema({
 
 AppSettingSchema.index({ key: 1 });
 
-const AppSetting: Model<IAppSetting> = mongoose.model<IAppSetting>('AppSetting', AppSettingSchema);
+// Explicitly set the collection name to 'server_configuration'
+const AppSetting: Model<IAppSetting> = mongoose.model<IAppSetting>('AppSetting', AppSettingSchema, 'server_configuration');
 
 export default AppSetting;
