@@ -1,4 +1,5 @@
 import express, { Request, Response, Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import mongoose from 'mongoose';
 import multer from 'multer';
 import path from 'path';
@@ -245,11 +246,28 @@ router.post('/photos', protect, upload.single('photo'), async (req: AuthRequest,
   }
 });
 
-// @route   GET /api/profiles/discover
+// @route   GET /api/users/profile/discover
 // @desc    Get profiles for discovery feed based on preferences
 // @access  Private
-router.get('/discover', protect, async (req: AuthRequest, res: Response) => {
+const discoverLimiter = rateLimit({
+  windowMs: 10 * 1000, // 10 seconds
+  max: 5, // limit each IP/user to 5 requests per windowMs
+  message: {
+    success: false,
+    message: 'Too many discovery requests, please try again after 10 seconds.',
+  },
+  keyGenerator: (req: Request) => {
+    // Use user ID for rate limiting if available (after protect middleware), otherwise IP
+    const authReq = req as AuthRequest;
+    return authReq.user?._id?.toString() || req.ip;
+  },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
+
+router.get('/discover', protect, discoverLimiter, async (req: AuthRequest, res: Response) => {
   try {
+    // The 'protect' middleware already handles this, but an extra check doesn't hurt.
     if (!req.user || !req.user._id) {
       return res.status(401).json({
         success: false,

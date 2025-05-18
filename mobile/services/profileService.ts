@@ -19,13 +19,13 @@ export interface ProfileData {
   interestedIn?: ('male' | 'female' | 'other')[]; // Added interestedIn field
 }
 
-// Giriş yapılıp yapılmadığını kontrol eden yardımcı fonksiyon
+// Helper function to check if logged in
 const isAuthenticated = async (): Promise<boolean> => {
   try {
     const token = await AsyncStorage.getItem('authToken');
     return !!token;
   } catch (error) {
-    console.log('Token kontrolünde hata:', error);
+    console.log('Error checking token:', error);
     return false;
   }
 };
@@ -95,9 +95,10 @@ export interface DiscoverProfilesResponse {
 
 const profileService = {
   async createOrUpdateProfile(profileData: ProfileData): Promise<ProfileResponse> {
-    // Kimlik doğrulama kontrolü
+    // Authentication check
     if (!(await isAuthenticated())) {
-      return { success: false, profile: null as any };
+      // Return a structure that matches ProfileResponse for consistency, even on auth failure
+      return { success: false, message: 'User not authenticated', profile: null as any };
     }
 
     // Format interests if it's an array
@@ -109,52 +110,52 @@ const profileService = {
       // Check internet connection first
       const isConnected = await checkInternetConnection();
       if (!isConnected) {
-        throw new Error('İnternet bağlantısı yok');
+        throw new Error('No internet connection');
       }
 
-      // baseURL zaten /api içerdiğinden önek EKLEME
-      const response = await apiClient.post<ProfileResponse>('/profiles', profileData);
+      // Use the new endpoint: /api/users/profile
+      const response = await apiClient.post<ProfileResponse>('/users/profile', profileData);
       return response.data;
     } catch (error) {
-      console.error('Profil oluşturma/güncelleme hatası:', error);
+      console.error('Error creating/updating profile:', error);
       throw error; // Re-throw error to be caught by the component
     }
   },
 
   async getMyProfile(): Promise<ProfileResponse> {
-    // Kimlik doğrulama kontrolü
+    // Authentication check
     if (!(await isAuthenticated())) {
-      return { success: false, profile: null as any };
+      return { success: false, message: 'User not authenticated', profile: null as any };
     }
 
     try {
       // Check internet connection first
       const isConnected = await checkInternetConnection();
       if (!isConnected) {
-        throw new Error('İnternet bağlantısı yok');
+        throw new Error('No internet connection');
       }
 
-      // baseURL zaten /api içerdiğinden önek EKLEME
-      const response = await apiClient.get<ProfileResponse>('/profiles/me');
+      // Use the new endpoint: /api/users/profile/me
+      const response = await apiClient.get<ProfileResponse>('/users/profile/me');
       return response.data;
     } catch (error: any) {
-      // 404 hatası normaldir - profil henüz oluşturulmamış demektir
+      // 404 error is normal - means profile hasn't been created yet
       if (error.response?.status === 404) {
         return {
           success: false,
           profile: null as any,
-          message: 'Profil henüz oluşturulmamış'
+          message: 'Profile not yet created' // English message
         };
       }
 
-      // Diğer hataları sessizce işle
-      console.log('Profil getirme hatası (sessiz)');
-      return { success: false, profile: null as any };
+      // Handle other errors silently for now, or decide on specific error responses
+      console.log('Error fetching profile (silent)');
+      return { success: false, message: 'Error fetching profile', profile: null as any };
     }
   },
 
-  async uploadProfilePhoto(photoFile: FormData): Promise<{ success: boolean; photo: { url: string; isMain: boolean } }> {
-    // Kimlik doğrulama kontrolü
+  async uploadProfilePhoto(photoFile: FormData): Promise<{ success: boolean; photo: { url: string; isMain: boolean }, photos?: any[] }> {
+    // Authentication check
     if (!(await isAuthenticated())) {
       return { success: false, photo: { url: '', isMain: false } };
     }
@@ -163,135 +164,136 @@ const profileService = {
       // Check internet connection first
       const isConnected = await checkInternetConnection();
       if (!isConnected) {
-        throw new Error('İnternet bağlantısı yok');
+        throw new Error('No internet connection');
       }
 
-      // baseURL zaten /api içerdiğinden önek EKLEME
-      const response = await apiClient.post('/profiles/photos', photoFile, {
+      // Use the new endpoint: /api/users/profile/photos
+      const response = await apiClient.post('/users/profile/photos', photoFile, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
-      return response.data;
+      return response.data; // Assuming backend sends back { success, photo, photos }
     } catch (error) {
-      console.error('Fotoğraf yükleme hatası:', error);
+      console.error('Error uploading photo:', error);
       return { success: false, photo: { url: '', isMain: false } };
     }
   },
 
-  async setMainPhoto(photoId: string): Promise<{ success: boolean; message: string }> {
-    // Kimlik doğrulama kontrolü
+  async setMainPhoto(photoId: string): Promise<{ success: boolean; message: string, photos?: any[] }> {
+    // Authentication check
     if (!(await isAuthenticated())) {
-      return { success: false, message: 'Giriş yapılmamış' };
+      return { success: false, message: 'Not authenticated' };
     }
 
     try {
       // Check internet connection first
       const isConnected = await checkInternetConnection();
       if (!isConnected) {
-        return { 
-          success: false, 
-          message: 'İnternet bağlantısı yok, ana fotoğraf ayarlanamıyor' 
+        return {
+          success: false,
+          message: 'No internet connection, cannot set main photo'
         };
       }
 
-      // baseURL zaten /api içerdiğinden önek EKLEME
-      const response = await apiClient.put(`/profiles/photos/${photoId}/main`);
-      return response.data;
+      // Use the new endpoint: /api/users/profile/photos/:photoId/main
+      const response = await apiClient.put(`/users/profile/photos/${photoId}/main`);
+      return response.data; // Assuming backend sends { success, message, photos }
     } catch (error) {
-      console.error('Ana fotoğraf ayarlama hatası:', error);
-      return { success: false, message: 'İşlem başarısız' };
+      console.error('Error setting main photo:', error);
+      return { success: false, message: 'Operation failed' };
     }
   },
 
   async discoverProfiles(): Promise<DiscoverProfilesResponse> {
-    // Kimlik doğrulama kontrolü
+    // Authentication check
     if (!(await isAuthenticated())) {
-      return { success: false, profiles: [] };
+      return { success: false, profiles: [], message: 'Not authenticated' };
     }
 
     try {
-      // Önce internet bağlantısını kontrol et
+      // Check internet connection first
       const isConnected = await checkInternetConnection();
 
       if (!isConnected) {
-        console.log('İnternet bağlantısı yok, önbellekten profil yükleme deneniyor...');
+        console.log('No internet connection, trying to load profiles from cache...');
 
-        // Önbellekten profilleri al
+        // Get profiles from cache
         const cachedProfiles = await profileCache.get();
 
         if (cachedProfiles && cachedProfiles.length > 0) {
-          console.log(`Önbellekten ${cachedProfiles.length} profil yüklendi`);
+          console.log(`Loaded ${cachedProfiles.length} profiles from cache`);
           return {
             success: true,
             profiles: cachedProfiles
           };
         } else {
-          console.log('Önbellekte profil bulunamadı');
+          console.log('No profiles found in cache');
           return {
             success: false,
             profiles: [],
-            message: 'İnternet bağlantısı yok ve önbellekte profil bulunamadı'
+            message: 'No internet connection and no profiles found in cache'
           };
         }
       }
 
-      // İnternet bağlantısı varsa API'den yeni profilleri getir
-      console.log('API\'den profiller alınıyor...');
+      // If internet connection exists, fetch new profiles from API
+      console.log('Fetching profiles from API...');
 
-      // baseURL zaten /api içerdiğinden önek EKLEME
-      const response = await apiClient.get<DiscoverProfilesResponse>('/profiles/discover');
+      // Use the new endpoint: /api/users/profile/discover
+      const response = await apiClient.get<DiscoverProfilesResponse>('/users/profile/discover');
 
-      // API'den başarıyla profiller alındıysa önbelleğe kaydet
+      // If profiles successfully fetched from API, save to cache
       if (response.data.success && response.data.profiles.length > 0) {
         await profileCache.save(response.data.profiles);
         await profileCache.updateLastFetch();
-        console.log(`${response.data.profiles.length} profil önbelleğe kaydedildi`);
+        console.log(`Saved ${response.data.profiles.length} profiles to cache`);
       }
 
       return response.data;
     } catch (error: any) {
-      console.log('API hatası, önbellekten profil yükleme deneniyor...', error);
+      console.log('API error, trying to load profiles from cache...', error);
 
-      // API hatası durumunda önbellekten yükle
+      // Load from cache in case of API error
       const cachedProfiles = await profileCache.get();
 
       if (cachedProfiles && cachedProfiles.length > 0) {
-        console.log(`Önbellekten ${cachedProfiles.length} profil yüklendi`);
+        console.log(`Loaded ${cachedProfiles.length} profiles from cache after API error`);
         return {
           success: true,
           profiles: cachedProfiles
         };
       }
 
-      // 404 hatası normaldir - profil henüz oluşturulmamış demektir
+      // 404 error is normal - means profile hasn't been created yet
       if (error.response?.status === 404) {
         return {
           success: false,
           profiles: [],
-          message: 'Profil henüz oluşturulmamış'
+          message: 'Profile not yet created' // English message
         };
       }
 
-      // Diğer hataları sessizce işle
-      console.log('Profilleri keşfetme hatası (sessiz)');
-      return { success: false, profiles: [] };
+      // Handle other errors silently
+      console.log('Error discovering profiles (silent)');
+      return { success: false, profiles: [], message: 'Error discovering profiles' };
     }
   },
 
   // New method to get user information for profile editing
-  async getUserInfo(): Promise<any> {
-    // Kimlik doğrulama kontrolü
+  async getUserInfo(): Promise<any> { // Consider defining a specific UserInfoResponse type
+    // Authentication check
     if (!(await isAuthenticated())) {
-      return { success: false, user: null };
+      return { success: false, user: null, message: 'Not authenticated' };
     }
 
     try {
+      // This endpoint should already be correct if it's fetching the User model directly
       const response = await apiClient.get('/users/me');
       return response.data;
     } catch (error) {
-      console.error('Kullanıcı bilgisi alma hatası:', error);
-      return { success: false, user: null };
+      console.error('Error fetching user info:', error);
+      return { success: false, user: null, message: 'Error fetching user info' };
     }
   },
 
@@ -299,17 +301,21 @@ const profileService = {
   async updateUserInfo(userData: {
     gender?: 'male' | 'female' | 'other';
     interestedIn?: ('male' | 'female' | 'other')[];
-  }): Promise<any> {
-    // Kimlik doğrulama kontrolü
+    // Add other updatable user fields here if necessary, e.g., name, email
+    name?: string;
+    email?: string;
+  }): Promise<any> { // Consider defining a specific UserUpdateResponse type
+    // Authentication check
     if (!(await isAuthenticated())) {
-      return { success: false };
+      return { success: false, message: 'Not authenticated' };
     }
 
     try {
+      // This endpoint should already be correct
       const response = await apiClient.put('/users/me', userData);
       return response.data;
     } catch (error) {
-      console.error('Kullanıcı bilgisi güncelleme hatası:', error);
+      console.error('Error updating user info:', error);
       throw error; // Re-throw to be handled by the component
     }
   }

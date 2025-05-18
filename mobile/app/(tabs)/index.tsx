@@ -108,16 +108,16 @@ export default function HomeScreen() {
           const mainPhoto = profile.photos?.find((photo: any) => photo.isMain);
           if (mainPhoto?.url) {
             profileImage = { uri: mainPhoto.url };
-            console.log(`Photo URL for ${profile.user.name}: ${mainPhoto.url}`);
+            console.log(`Photo URL for ${profile.name}: ${mainPhoto.url}`); // Use profile.name
           } else {
-            console.log(`No photo for ${profile.user.name}, using default`);
+            console.log(`No photo for ${profile.name}, using default`); // Use profile.name
           }
 
           return {
             id: profile._id,
-            name: profile.user.name || "Unnamed",
-            age: calculateAge(profile.user.dateOfBirth),
-            image: profileImage, // Corrected image format
+            name: profile.name || "Unnamed", // Use profile.name directly
+            age: profile.age, // Use age directly from backend response
+            image: profileImage,
             bio: profile.bio || 'No bio information',
             distance: profile.location?.city
               ? `${profile.location.city}, ${profile.location.country || ''}`
@@ -253,19 +253,8 @@ export default function HomeScreen() {
     }
   };
 
-  // Helper function to calculate age from date of birth
-  const calculateAge = (dob: string): number => {
-    const birthDate = new Date(dob);
-    const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age--;
-    }
-
-    return age;
-  };
+  // The calculateAge function is no longer needed here as age comes from backend
+  // const calculateAge = (dob: string): number => { ... };
 
   if (loading) {
     return (
