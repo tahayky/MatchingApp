@@ -43,14 +43,18 @@ app.use(cors(corsOptions));
 
 // Explicitly handle OPTIONS requests for all routes after CORS setup
 app.use((req, res, next) => {
+  console.log(`[APP.TS MIDDLEWARE] Request: ${req.method} ${req.originalUrl}`);
   if (req.method === 'OPTIONS') {
+    console.log(`[APP.TS OPTIONS HANDLER] Intercepted OPTIONS request for ${req.originalUrl}. Applying CORS and sending 204.`);
     // Apply CORS headers for the OPTIONS request
     cors(corsOptions)(req, res, () => {
       // After CORS headers are applied, send 204 and end the response.
       // This ensures OPTIONS requests don't proceed to other middleware/routes.
+      console.log(`[APP.TS OPTIONS HANDLER] CORS applied for ${req.originalUrl}. Sending 204.`);
       res.sendStatus(204);
     });
   } else {
+    console.log(`[APP.TS MIDDLEWARE] Not an OPTIONS request (${req.method}), calling next().`);
     next(); // For non-OPTIONS requests, proceed to next middleware
   }
 });
