@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label'; // Assuming these paths are corre
 import { Input } from '@/components/ui/input'; // Assuming these paths are correct for your project
 import { Button } from '@/components/ui/button'; // Assuming these paths are correct for your project
 import axios from 'axios';
-import { getApiUrl, getApiConfig } from '@/utils/apiConfig';
+import { getApiUrl } from '@/utils/apiConfig'; // Removed getApiConfig
 import { toast } from 'sonner';
 
 // The getAuthToken function and manual Authorization header are removed
@@ -38,11 +38,11 @@ export default function RateLimitSettingsPage() {
     // Token is not manually fetched or sent in headers; HttpOnly cookie is used.
     try {
       const apiUrl = getApiUrl('/admin/settings/discover-rate-limit');
-      const config = getApiConfig(); // Keep for base URL and other potential shared configs
+      // const config = getApiConfig(); // We only need timeout from here if not set globally for axios
       const response = await axios.get(apiUrl, {
-        withCredentials: true, // This tells axios to send cookies from the browser
-        timeout: config.timeout,
-        // headers: { ...config.headers } // Keep other headers if needed, but remove Authorization
+        withCredentials: true,
+        timeout: 30000, // Example timeout, or use from getApiConfig().timeout
+        // Minimal headers, let browser and axios handle defaults for GET
       });
 
       if (response.data.success && response.data.data) {
@@ -92,11 +92,13 @@ export default function RateLimitSettingsPage() {
 
     try {
       const apiUrl = getApiUrl('/admin/settings/discover-rate-limit');
-      const config = getApiConfig(); // Keep for base URL and other potential shared configs
+      // const config = getApiConfig();
       const response = await axios.put(apiUrl, settingsToSave, {
-        withCredentials: true, // This tells axios to send cookies from the browser
-        timeout: config.timeout,
-        // headers: { ...config.headers } // Keep other headers if needed, but remove Authorization
+        withCredentials: true,
+        timeout: 30000, // Example timeout
+        headers: {
+          'Content-Type': 'application/json', // Explicitly set for PUT
+        },
       });
 
       if (response.data.success) {
