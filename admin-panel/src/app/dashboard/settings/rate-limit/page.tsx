@@ -100,14 +100,34 @@ export default function RateLimitSettingsPage() {
       });
 
       if (response.data.success) {
-        toast.success(response.data.message || 'Rate limit settings updated successfully!');
+        toast.success(response.data.message || 'Rate limit settings updated successfully! Triggering refresh...');
         if (response.data.data) {
             const newSettings = response.data.data as RateLimitSettings;
             setWindowSec(newSettings.windowMs / 1000);
             setMaxRequests(newSettings.max);
             setMessageText(newSettings.message || DEFAULT_MESSAGE);
         }
-        toast.info('Note: Server restart may be required for changes to fully apply to the rate limiter.');
+        // Call the refresh endpoint
+        try {
+          const refreshApiUrl = getApiUrl('/admin/settings/refresh-discover-rate-limit');
+          // const refreshConfig = getApiConfig(); // config might not be needed if just POSTing
+          await axios.post(refreshApiUrl, {}, { // Empty body for POST
+            withCredentials: true, // Ensure cookie is sent
+            // headers: { // Token should be sent via cookie
+            //   ...refreshConfig.headers,
+            //  'Authorization': `Bearer ${token}`, // Token is sent via HttpOnly cookie
+            // },
+            // timeout: refreshConfig.timeout,
+          });
+          toast.success('Rate limiter configuration refresh triggered on the server.');
+        } catch (refreshError: unknown) {
+          console.error('Error triggering rate limit refresh:', refreshError);
+          let refreshErrorMessage = 'Settings saved, but failed to trigger immediate refresh on server.';
+          if (axios.isAxiosError(refreshError) && refreshError.response?.data?.message) {
+            refreshErrorMessage += ` Server said: ${refreshError.response.data.message}`;
+          }
+          toast.warning(refreshErrorMessage);
+        }
       } else {
         toast.error(response.data.message || 'Failed to update settings.');
       }

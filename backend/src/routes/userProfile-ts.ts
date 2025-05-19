@@ -262,10 +262,10 @@ const DEFAULT_DISCOVER_RATE_LIMIT_CONFIG = {
 };
 const DISCOVER_RATE_LIMIT_KEY = 'discoverRateLimit';
 
-// Function to create a rate limiter with potentially dynamic configuration
-// This function will be called once when the module is loaded.
-// For truly dynamic updates without server restart, a more complex setup would be needed.
-async function createDiscoverLimiter() {
+let discoverLimiterInstance: ReturnType<typeof rateLimit> = rateLimit(DEFAULT_DISCOVER_RATE_LIMIT_CONFIG); // Initialize with defaults
+
+// Function to create/update the rate limiter instance
+export async function updateDiscoverLimiter() {
   let config = { ...DEFAULT_DISCOVER_RATE_LIMIT_CONFIG };
   try {
     const dbSetting = await AppSetting.findOne({ key: DISCOVER_RATE_LIMIT_KEY });
@@ -275,15 +275,19 @@ async function createDiscoverLimiter() {
       if (dbSetting.value.message && typeof dbSetting.value.message === 'string') {
         config.message.message = dbSetting.value.message;
       }
-      console.log(`[RateLimit] Using DB config for /discover: ${config.max} req / ${config.windowMs / 1000}s`);
+      console.log(`[RateLimit] Re-configured /discover limiter from DB: ${config.max} req / ${config.windowMs / 1000}s`);
     } else {
-      console.log(`[RateLimit] Using default config for /discover: ${config.max} req / ${config.windowMs / 1000}s`);
+      console.log(`[RateLimit] No DB config found for /discover limiter, using defaults: ${config.max} req / ${config.windowMs / 1000}s`);
     }
   } catch (error) {
-    console.error('[RateLimit] Error fetching discover rate limit settings, using defaults:', error);
+    console.error('[RateLimit] Error fetching/applying discover rate limit settings, using defaults:', error);
+    // Keep current config (which might be defaults) if DB fetch fails
   }
 
-  return rateLimit({
+  // Create a new limiter instance with the (potentially updated) config
+  // Note: express-rate-limit instances are typically not mutable in this way for windowMs/max.
+  // We are replacing the middleware instance.
+  discoverLimiterInstance = rateLimit({
     windowMs: config.windowMs,
     max: config.max,
     message: config.message,
@@ -296,37 +300,15 @@ async function createDiscoverLimiter() {
   });
 }
 
-// Initialize the limiter when the module loads
-// Note: This means changes from admin panel require a server restart to take effect on the limiter.
-let discoverLimiterInstance: ReturnType<typeof rateLimit>;
-createDiscoverLimiter().then(limiter => {
-  discoverLimiterInstance = limiter;
-}).catch(error => {
-  console.error("Failed to initialize discoverLimiter, using default hardcoded limiter as fallback", error);
-  discoverLimiterInstance = rateLimit({ // Fallback limiter
-    windowMs: DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs,
-    max: DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.max,
-    message: DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message,
-     keyGenerator: (req: Request) => {
-      const authReq = req as AuthRequest;
-      return authReq.user?._id?.toString() || req.ip;
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
-  });
+// Initial load of the limiter configuration
+updateDiscoverLimiter().catch(error => {
+  console.error("Failed to perform initial load of discoverLimiter, defaults will be used.", error);
+  // discoverLimiterInstance is already initialized with defaults above, so it's a safe fallback.
 });
 
 router.get('/discover', protect, (req, res, next) => {
-  // Apply the limiter. If it's not initialized yet (should be quick), this might cause an issue.
-  // A more robust solution might involve a placeholder or ensuring initialization before routes are hit.
-  // For simplicity now, we assume discoverLimiterInstance is initialized.
-  if (discoverLimiterInstance) {
-    discoverLimiterInstance(req, res, next);
-  } else {
-    // Fallback if initialization is somehow still pending or failed catastrophically
-    console.warn("[RateLimit] discoverLimiterInstance not ready, bypassing rate limit for this request.");
-    next();
-  }
+  // discoverLimiterInstance will always exist due to initial default setup
+  discoverLimiterInstance(req, res, next);
 }, async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user || !req.user._id) {

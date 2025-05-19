@@ -7,6 +7,7 @@ import SubscriptionPlan, { ISubscriptionPlan } from '../models/SubscriptionPlan'
 import AppSetting, { IAppSetting } from '../models/AppSetting'; // Import AppSetting model
 import Match from '../models/Match'; // Import Match model
 import { isAdminAuthenticated } from '../middleware/adminAuth'; // Import the new middleware
+import { updateDiscoverLimiter } from './userProfile-ts'; // Import the updater function
 
 // Load environment variables
 dotenv.config();
@@ -510,5 +511,18 @@ router.put('/settings/discover-rate-limit', isAdminAuthenticated, async (req: Re
   }
 });
 
+// @route   POST /api/admin/settings/refresh-discover-rate-limit
+// @desc    Refreshes the discover rate limiter configuration from the database
+// @access  Private (Admin)
+router.post('/settings/refresh-discover-rate-limit', isAdminAuthenticated, async (req: Request, res: Response) => {
+  try {
+    await updateDiscoverLimiter();
+    res.json({ success: true, message: 'Discover rate limiter configuration has been refreshed.' });
+  } catch (error: unknown) {
+    console.error('Error refreshing discover rate limiter:', error);
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred while refreshing.';
+    res.status(500).json({ success: false, message });
+  }
+});
 
 export default router;
