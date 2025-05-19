@@ -28,6 +28,12 @@ dotenv.config();
 // Create Express application
 const app: Application = express();
 
+// Very first middleware to log incoming request origin
+app.use((req, res, next) => {
+  console.log(`[REQUEST LOGGER] Method: ${req.method}, URL: ${req.originalUrl}, Origin: ${req.headers.origin}`);
+  next();
+});
+
 // Configure middleware
 const adminPanelOrigin = process.env.ADMIN_PANEL_ORIGIN_URL || 'http://localhost:3001'; // Fallback if not set
 console.log(`CORS: Allowing origin: ${adminPanelOrigin}`);
