@@ -42,9 +42,22 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // Explicitly handle OPTIONS requests for all routes after CORS setup
-// This ensures OPTIONS requests are terminated correctly with 204 No Content
-// and appropriate CORS headers, preventing them from hitting auth middleware.
-app.options('*', cors(corsOptions)); // Use the same corsOptions for consistency
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    // Apply CORS headers for the OPTIONS request
+    cors(corsOptions)(req, res, () => {
+      // After CORS headers are applied, send 204 and end the response.
+      // This ensures OPTIONS requests don't proceed to other middleware/routes.
+      res.sendStatus(204);
+    });
+  } else {
+    next(); // For non-OPTIONS requests, proceed to next middleware
+  }
+});
+// The app.options('*', cors(corsOptions)); might be redundant now or can be removed.
+// For safety, let's remove it to avoid potential conflicts with the above.
+// app.options('*', cors(corsOptions));
+
 
 app.use(cookieParser()); // Use cookie-parser middleware
 app.use(express.json());
