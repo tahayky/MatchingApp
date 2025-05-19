@@ -88,10 +88,18 @@ app.get('/api/matches/quota/test-debug', (req: Request, res: Response) => {
 
 app.use('/api/matches', matchesRoutes);
 
-// Explicitly handle OPTIONS for /api/admin/* before the adminRoutes router.
-// The main app.use(cors(corsOptions)) should apply to this as well,
-// but this ensures OPTIONS for this path are terminated correctly by cors.
-app.options('/api/admin/*', cors(corsOptions));
+// Most specific OPTIONS handler for /api/admin/*
+// This MUST be before app.use('/api/admin', adminRoutes);
+app.options('/api/admin/*', (req, res) => {
+  console.log(`[APP.TS ADMIN OPTIONS HANDLER] Intercepted OPTIONS for ${req.originalUrl}`);
+  // Manually set CORS headers based on your corsOptions
+  res.header('Access-Control-Allow-Origin', adminPanelOrigin);
+  res.header('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  console.log(`[APP.TS ADMIN OPTIONS HANDLER] Sending 204 for ${req.originalUrl}`);
+  res.sendStatus(204); // Send 204 No Content and end the response
+});
 
 app.use('/api/admin', adminRoutes); // Register admin routes
 
