@@ -45,29 +45,10 @@ const corsOptions = {
   credentials: true
 };
 
-app.use(cors(corsOptions));
+app.use(cors(corsOptions)); // General CORS for actual requests
 
-// Explicitly handle OPTIONS requests for all routes after CORS setup
-app.use((req, res, next) => {
-  console.log(`[APP.TS MIDDLEWARE] Request: ${req.method} ${req.originalUrl}`);
-  if (req.method === 'OPTIONS') {
-    console.log(`[APP.TS OPTIONS HANDLER] Intercepted OPTIONS request for ${req.originalUrl}. Applying CORS and sending 204.`);
-    // Apply CORS headers for the OPTIONS request
-    cors(corsOptions)(req, res, () => {
-      // After CORS headers are applied, send 204 and end the response.
-      // This ensures OPTIONS requests don't proceed to other middleware/routes.
-      console.log(`[APP.TS OPTIONS HANDLER] CORS applied for ${req.originalUrl}. Sending 204.`);
-      res.sendStatus(204);
-    });
-  } else {
-    console.log(`[APP.TS MIDDLEWARE] Not an OPTIONS request (${req.method}), calling next().`);
-    next(); // For non-OPTIONS requests, proceed to next middleware
-  }
-});
-// The app.options('*', cors(corsOptions)); might be redundant now or can be removed.
-// For safety, let's remove it to avoid potential conflicts with the above.
-// app.options('*', cors(corsOptions));
-
+// Remove the previous custom app.use for OPTIONS.
+// The app.use(cors(corsOptions)) above should handle OPTIONS for non-admin routes.
 
 app.use(cookieParser()); // Use cookie-parser middleware
 app.use(express.json());
@@ -106,6 +87,12 @@ app.get('/api/matches/quota/test-debug', (req: Request, res: Response) => {
 });
 
 app.use('/api/matches', matchesRoutes);
+
+// Explicitly handle OPTIONS for /api/admin/* before the adminRoutes router.
+// The main app.use(cors(corsOptions)) should apply to this as well,
+// but this ensures OPTIONS for this path are terminated correctly by cors.
+app.options('/api/admin/*', cors(corsOptions));
+
 app.use('/api/admin', adminRoutes); // Register admin routes
 
 // Log available routes for debugging
