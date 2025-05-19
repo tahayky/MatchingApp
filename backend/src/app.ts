@@ -32,17 +32,19 @@ const app: Application = express();
 const adminPanelOrigin = process.env.ADMIN_PANEL_ORIGIN_URL || 'http://localhost:3001'; // Fallback if not set
 console.log(`CORS: Allowing origin: ${adminPanelOrigin}`);
 
-app.use(cors({
+const corsOptions = {
   origin: adminPanelOrigin,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
-}));
+};
+
+app.use(cors(corsOptions));
 
 // Explicitly handle OPTIONS requests for all routes after CORS setup
 // This ensures OPTIONS requests are terminated correctly with 204 No Content
 // and appropriate CORS headers, preventing them from hitting auth middleware.
-app.options('*', cors()); // Enable pre-flight across-the-board
+app.options('*', cors(corsOptions)); // Use the same corsOptions for consistency
 
 app.use(cookieParser()); // Use cookie-parser middleware
 app.use(express.json());
