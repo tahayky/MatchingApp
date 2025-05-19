@@ -88,20 +88,22 @@ app.get('/api/matches/quota/test-debug', (req: Request, res: Response) => {
 
 app.use('/api/matches', matchesRoutes);
 
-// Most specific OPTIONS handler for /api/admin/*
-// This MUST be before app.use('/api/admin', adminRoutes);
-app.options('/api/admin/*', (req, res) => {
-  console.log(`[APP.TS ADMIN OPTIONS HANDLER] Intercepted OPTIONS for ${req.originalUrl}`);
+// Create a dedicated router to handle OPTIONS for /api/admin paths
+const adminOptionsRouter = express.Router();
+adminOptionsRouter.options('/*', (req, res) => {
+  console.log(`[ADMIN OPTIONS ROUTER] Intercepted OPTIONS for ${req.originalUrl} (path within admin: ${req.path})`);
   // Manually set CORS headers based on your corsOptions
   res.header('Access-Control-Allow-Origin', adminPanelOrigin);
-  res.header('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS'); // Ensure PUT is here
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization'); // Ensure relevant headers are here
   res.header('Access-Control-Allow-Credentials', 'true');
-  console.log(`[APP.TS ADMIN OPTIONS HANDLER] Sending 204 for ${req.originalUrl}`);
-  res.sendStatus(204); // Send 204 No Content and end the response
+  console.log(`[ADMIN OPTIONS ROUTER] Sending 204 for ${req.originalUrl}`);
+  res.sendStatus(204);
 });
 
-app.use('/api/admin', adminRoutes); // Register admin routes
+// Mount this OPTIONS handler router BEFORE the main adminRoutes
+app.use('/api/admin', adminOptionsRouter);
+app.use('/api/admin', adminRoutes); // Register main admin routes
 
 // Log available routes for debugging
 app._router.stack.forEach(function(r: any) {
