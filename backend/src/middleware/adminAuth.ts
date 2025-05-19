@@ -11,6 +11,12 @@ interface AdminAuthRequest extends Request {
 }
 
 export const isAdminAuthenticated = (req: AdminAuthRequest, res: Response, next: NextFunction) => {
+  // Allow OPTIONS requests to pass through without authentication
+  // The CORS middleware should handle the actual response for OPTIONS.
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+
   let token;
 
   // 1. Check for token in HttpOnly cookie
