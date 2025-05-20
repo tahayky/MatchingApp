@@ -416,10 +416,17 @@ router.get('/discover', protect, (req, res, next) => {
       };
     }
 
+    console.log(`[DISCOVER PROFILES] User ID: ${currentUser._id}`);
+    console.log(`[DISCOVER PROFILES] User Preferences: Age ${currentUser.preferences?.ageRange?.min}-${currentUser.preferences?.ageRange?.max}, Dist: ${currentUser.preferences?.distance}km`);
+    console.log(`[DISCOVER PROFILES] User InterestedIn: ${currentUser.interestedIn?.join(', ')}`);
+    console.log(`[DISCOVER PROFILES] Query to MongoDB: ${JSON.stringify(query, null, 2)}`);
+    console.log(`[DISCOVER PROFILES] Users to Exclude (${usersToExclude.length}): ${usersToExclude.map(id => id.toString()).join(', ')}`);
 
     const potentialMatches = await User.find(query)
       .select('_id name dateOfBirth gender photos bio location interests occupation education') // Select necessary fields
       .limit(20);
+    
+    console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} potential matches from DB.`);
 
     // Format users before sending
     const formattedUsers = potentialMatches.map(u => {
