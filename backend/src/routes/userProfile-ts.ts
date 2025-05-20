@@ -1,3 +1,4 @@
+console.log('[userProfile-ts.ts] Module loading...'); // LOG AT VERY TOP
 import express, { Request, Response, Router, NextFunction } from 'express'; // Added NextFunction
 import rateLimit from 'express-rate-limit';
 import AppSetting from '../models/AppSetting'; // Import AppSetting model
@@ -313,8 +314,11 @@ export async function updateDiscoverLimiter() {
 }
 
 // Initial load of the limiter configuration
-updateDiscoverLimiter().catch(error => {
-  console.error("Failed to perform initial load of discoverLimiter, defaults will be used.", error);
+console.log('[userProfile-ts.ts] Attempting initial call to updateDiscoverLimiter()...'); // LOG BEFORE CALL
+updateDiscoverLimiter().then(() => {
+  console.log('[userProfile-ts.ts] Initial updateDiscoverLimiter() call completed (or promise resolved).');
+}).catch(error => {
+  console.error("[userProfile-ts.ts] CRITICAL ERROR during initial updateDiscoverLimiter() call:", error);
   // discoverLimiterInstance is already initialized with defaults above, so it's a safe fallback.
 });
 
