@@ -6,11 +6,9 @@ import { Label } from '@/components/ui/label'; // Assuming these paths are corre
 import { Input } from '@/components/ui/input'; // Assuming these paths are correct for your project
 import { Button } from '@/components/ui/button'; // Assuming these paths are correct for your project
 import axios from 'axios';
-import { getApiUrl } from '@/utils/apiConfig'; // Removed getApiConfig
+import { getApiUrl } from '@/utils/apiConfig';
 import { toast } from 'sonner';
-
-// The getAuthToken function and manual Authorization header are removed
-// in favor of relying on HttpOnly cookies sent by the browser.
+import { getAdminToken } from '@/utils/adminAuthStore'; // Import token store functions
 
 interface RateLimitSettings {
   windowMs: number;
@@ -35,14 +33,22 @@ export default function RateLimitSettingsPage() {
 
   const fetchSettings = async () => {
     setIsLoading(true);
-    // Token is not manually fetched or sent in headers; HttpOnly cookie is used.
+    const token = getAdminToken();
+
+    if (!token) {
+      toast.error('Admin authentication token not found. Please log in.');
+      setIsLoading(false);
+      // Optionally redirect to login: router.push('/login');
+      return;
+    }
+
     try {
       const apiUrl = getApiUrl('/admin/settings/discover-rate-limit');
-      // const config = getApiConfig(); // We only need timeout from here if not set globally for axios
       const response = await axios.get(apiUrl, {
-        withCredentials: true,
-        timeout: 30000, // Example timeout, or use from getApiConfig().timeout
-        // Minimal headers, let browser and axios handle defaults for GET
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        timeout: 30000,
       });
 
       if (response.data.success && response.data.data) {
@@ -82,7 +88,14 @@ export default function RateLimitSettingsPage() {
     e.preventDefault();
     setIsSaving(true);
     toast.info('Saving rate limit settings...');
-    // Token is not manually fetched or sent in headers; HttpOnly cookie is used.
+    const token = getAdminToken();
+
+    if (!token) {
+      toast.error('Admin authentication token not found. Please log in.');
+      setIsSaving(false);
+      // Optionally redirect to login: router.push('/login');
+      return;
+    }
 
     const settingsToSave = {
       windowMs: windowSec * 1000,
@@ -92,13 +105,12 @@ export default function RateLimitSettingsPage() {
 
     try {
       const apiUrl = getApiUrl('/admin/settings/discover-rate-limit');
-      // const config = getApiConfig();
       const response = await axios.put(apiUrl, settingsToSave, {
-        withCredentials: true,
-        timeout: 30000, // Example timeout
         headers: {
-          'Content-Type': 'application/json', // Explicitly set for PUT
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
+        timeout: 30000,
       });
 
       if (response.data.success) {
@@ -112,14 +124,11 @@ export default function RateLimitSettingsPage() {
         // Call the refresh endpoint
         try {
           const refreshApiUrl = getApiUrl('/admin/settings/refresh-discover-rate-limit');
-          // const refreshConfig = getApiConfig(); // config might not be needed if just POSTing
-          await axios.post(refreshApiUrl, {}, { // Empty body for POST
-            withCredentials: true, // Ensure cookie is sent
-            // headers: { // Token should be sent via cookie
-            //   ...refreshConfig.headers,
-            //  'Authorization': `Bearer ${token}`, // Token is sent via HttpOnly cookie
-            // },
-            // timeout: refreshConfig.timeout,
+          await axios.post(refreshApiUrl, {}, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+            timeout: 30000,
           });
           toast.success('Rate limiter configuration refresh triggered on the server.');
         } catch (refreshError: unknown) {

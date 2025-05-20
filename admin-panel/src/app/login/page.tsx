@@ -4,6 +4,7 @@ import { useState } from 'react' // Removed useEffect
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getApiUrl } from '@/utils/apiConfig' // Import getApiUrl
+import { setAdminToken } from '@/utils/adminAuthStore'; // Import token store functions
 
 // const ADMIN_AUTH_TOKEN_KEY = 'adminAuthToken'; // No longer used
 
@@ -47,11 +48,10 @@ export default function LoginPage() {
 
       const data = await response.json();
 
-      if (response.ok && data.success) { // Token from JSON response is not strictly needed if HttpOnly cookie is set
-        // Backend sets HttpOnly cookie. Frontend can use data.success to redirect.
-        // No need to store token from response in localStorage if relying on HttpOnly cookie.
-        // localStorage.setItem(ADMIN_AUTH_TOKEN_KEY, data.token);
-        console.log('[Login Page] Login successful, backend should have set HttpOnly cookie.');
+      if (response.ok && data.success && data.token) {
+        // Store the token using our in-memory store (or your state management solution)
+        setAdminToken(data.token);
+        console.log('[Login Page] Login successful, token stored in JS memory.');
         router.push('/dashboard'); // Redirect to dashboard
       } else {
         setError(data.message || 'Login failed. Please check your credentials.');
