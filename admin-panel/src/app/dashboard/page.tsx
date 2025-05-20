@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { getApiUrl } from '@/utils/apiConfig';
+import { getAdminToken, clearAdminToken } from '@/utils/adminAuthStore'; // Import token store functions
 
-const ADMIN_AUTH_TOKEN_KEY = 'adminAuthToken';
+// const ADMIN_AUTH_TOKEN_KEY = 'adminAuthToken'; // No longer used
 
 interface StatData {
   name: string;
@@ -44,9 +45,10 @@ export default function DashboardPage() {
     const fetchDashboardData = async () => {
       setLoading(true);
       setError(null);
-      const token = localStorage.getItem(ADMIN_AUTH_TOKEN_KEY);
+      const token = getAdminToken(); // Use token from store
 
       if (!token) {
+        console.log('[DashboardPage] No admin token found, redirecting to login.');
         router.push('/login');
         return;
       }
@@ -63,7 +65,7 @@ export default function DashboardPage() {
         if (!response.ok) {
           if (response.status === 401 || response.status === 403) {
             // Unauthorized or Forbidden
-            localStorage.removeItem(ADMIN_AUTH_TOKEN_KEY); // Clear bad token
+            clearAdminToken(); // Clear token from store
             router.push('/login');
             return;
           }
