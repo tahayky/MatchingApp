@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getApiUrl } from '@/utils/apiConfig'; // Assuming this is correctly configured
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'; // Assuming these are ShadCN/ui components
+import { getAdminToken, clearAdminToken } from '@/utils/adminAuthStore'; // Import token store functions
 
-const ADMIN_AUTH_TOKEN_KEY = 'adminAuthToken';
+// const ADMIN_AUTH_TOKEN_KEY = 'adminAuthToken'; // No longer used
 
 interface UserForAdminView {
   _id: string;
@@ -43,13 +44,14 @@ export default function UsersPage() {
     const fetchUsers = async () => {
       setLoading(true);
       setError(null);
-      const token = localStorage.getItem(ADMIN_AUTH_TOKEN_KEY);
+      const token = getAdminToken(); // Use token from store
 
       if (!token) {
+        console.log('[UsersPage] No admin token found, redirecting to login.');
         router.push('/login');
         return;
       }
-
+      console.log('[UsersPage] Token found, fetching users.');
       try {
         const queryParams = new URLSearchParams({
           page: currentPage.toString(),
@@ -70,7 +72,7 @@ export default function UsersPage() {
 
         if (!response.ok) {
           if (response.status === 401 || response.status === 403) {
-            localStorage.removeItem(ADMIN_AUTH_TOKEN_KEY);
+            clearAdminToken(); // Clear token from store
             router.push('/login');
             return;
           }
