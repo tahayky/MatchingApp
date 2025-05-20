@@ -1,4 +1,4 @@
-import express, { Request, Response, Router } from 'express';
+import express, { Request, Response, Router, NextFunction } from 'express'; // Added NextFunction
 import rateLimit from 'express-rate-limit';
 import AppSetting from '../models/AppSetting'; // Import AppSetting model
 import mongoose from 'mongoose';
@@ -306,11 +306,22 @@ updateDiscoverLimiter().catch(error => {
   // discoverLimiterInstance is already initialized with defaults above, so it's a safe fallback.
 });
 
-router.get('/discover', protect, (req, res, next) => {
+router.get('/discover', protect, (req: Request, res: Response, next: NextFunction) => { // Added NextFunction type
+  const authReq = req as AuthRequest; // Cast req to AuthRequest to access user potentially
+  const key = authReq.user?._id?.toString() || authReq.ip;
+  console.log(`[RATE LIMITER INVOKED] For /discover. Key: ${key}. UserID: ${authReq.user?._id}, IP: ${authReq.ip}`);
+  
   // discoverLimiterInstance will always exist due to initial default setup
-  discoverLimiterInstance(req, res, next);
+  if (discoverLimiterInstance) {
+    discoverLimiterInstance(req, res, next);
+  } else {
+    // This case should ideally not be reached if discoverLimiterInstance is always initialized.
+    console.error("[RATE LIMITER ERROR] discoverLimiterInstance is unexpectedly undefined! Proceeding without rate limiting for this request.");
+    next();
+  }
 }, async (req: AuthRequest, res: Response) => {
   try {
+    // The protect middleware should have already populated req.user
     if (!req.user || !req.user._id) {
       return res.status(401).json({
         success: false,
