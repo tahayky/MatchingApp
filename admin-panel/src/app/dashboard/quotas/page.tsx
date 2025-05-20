@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getApiUrl } from '@/utils/apiConfig';
+import { getAdminToken, clearAdminToken } from '@/utils/adminAuthStore'; // Import token store functions
 
-const ADMIN_AUTH_TOKEN_KEY = 'adminAuthToken';
+// const ADMIN_AUTH_TOKEN_KEY = 'adminAuthToken'; // No longer used
 
 interface UserQuotaData {
   _id: string;
@@ -39,13 +40,14 @@ export default function QuotasPage() {
     const fetchUserQuotas = async () => {
       setLoading(true);
       setError(null);
-      const token = localStorage.getItem(ADMIN_AUTH_TOKEN_KEY);
+      const token = getAdminToken(); // Use token from store
 
       if (!token) {
+        console.log('[QuotasPage] No admin token found, redirecting to login.');
         router.push('/login');
         return;
       }
-
+      console.log('[QuotasPage] Token found, fetching user quotas.');
       try {
         const queryParams = new URLSearchParams({
           page: currentPage.toString(),
@@ -65,7 +67,7 @@ export default function QuotasPage() {
         
         if (!response.ok) {
           if (response.status === 401 || response.status === 403) {
-            localStorage.removeItem(ADMIN_AUTH_TOKEN_KEY);
+            clearAdminToken(); // Clear token from store
             router.push('/login');
             return;
           }

@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { getApiUrl } from '@/utils/apiConfig';
+import { getAdminToken, clearAdminToken } from '@/utils/adminAuthStore'; // Import token store functions
 
-const ADMIN_AUTH_TOKEN_KEY = 'adminAuthToken';
+// const ADMIN_AUTH_TOKEN_KEY = 'adminAuthToken'; // No longer used
 
 // Interface matching ISubscriptionPlan from backend model
 interface SubscriptionPlanData {
@@ -56,13 +57,14 @@ export default function SubscriptionsPage() {
   const fetchPlans = async () => {
     setLoading(true);
     setError(null);
-    const token = localStorage.getItem(ADMIN_AUTH_TOKEN_KEY);
+    const token = getAdminToken(); // Use token from store
 
     if (!token) {
+      console.log('[SubscriptionsPage] No admin token found in fetchPlans, redirecting to login.');
       router.push('/login');
       return;
     }
-
+    console.log('[SubscriptionsPage] Token found in fetchPlans, fetching plans.');
     try {
       const response = await fetch(getApiUrl('admin/subscription-plans'), {
         method: 'GET',
@@ -74,7 +76,7 @@ export default function SubscriptionsPage() {
 
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
-          localStorage.removeItem(ADMIN_AUTH_TOKEN_KEY);
+          clearAdminToken(); // Clear token from store
           router.push('/login');
           return;
         }
@@ -178,10 +180,12 @@ export default function SubscriptionsPage() {
     setSaving(true);
     setError(null);
     setSuccessMessage(null);
-    const token = localStorage.getItem(ADMIN_AUTH_TOKEN_KEY);
+    const token = getAdminToken(); // Use token from store
 
     if (!token) {
+      console.log('[SubscriptionsPage] No admin token found in handleSubmitForm, redirecting to login.');
       router.push('/login');
+      setSaving(false); // Ensure saving state is reset
       return;
     }
 
@@ -238,10 +242,12 @@ export default function SubscriptionsPage() {
     setLoading(true); // Or a specific deleting state
     setError(null);
     setSuccessMessage(null);
-    const token = localStorage.getItem(ADMIN_AUTH_TOKEN_KEY);
+    const token = getAdminToken(); // Use token from store
 
     if (!token) {
+        console.log('[SubscriptionsPage] No admin token found in handleDeletePlan, redirecting to login.');
         router.push('/login');
+        setLoading(false); // Ensure loading state is reset
         return;
     }
 
@@ -275,9 +281,10 @@ const handleSetDefaultPlan = async (planIdToSetAsDefault: string) => {
     setSaving(true); // Use general saving state or a specific one
     setError(null);
     setSuccessMessage(null);
-    const token = localStorage.getItem(ADMIN_AUTH_TOKEN_KEY);
+    const token = getAdminToken(); // Use token from store
 
     if (!token) {
+        console.log('[SubscriptionsPage] No admin token found in handleSetDefaultPlan, redirecting to login.');
         router.push('/login');
         setSaving(false);
         return;
