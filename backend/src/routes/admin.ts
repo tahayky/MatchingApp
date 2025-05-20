@@ -14,6 +14,22 @@ dotenv.config();
 
 const router: Router = express.Router();
 
+// Router-level OPTIONS handler for all /api/admin/* paths
+router.options('/*', (req: Request, res: Response) => {
+  console.log(`[ADMIN ROUTER OPTIONS HANDLER] Intercepted OPTIONS for ${req.originalUrl} (path within admin: ${req.path})`);
+  // Manually set CORS headers - ensure adminPanelOrigin is accessible here or use a fixed value for testing
+  // For now, let's assume adminPanelOrigin is available or use a placeholder.
+  // Ideally, corsOptions would be passed or re-defined here.
+  const adminPanelOrigin = process.env.ADMIN_PANEL_ORIGIN_URL || 'http://localhost:3001';
+  res.header('Access-Control-Allow-Origin', adminPanelOrigin);
+  res.header('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  console.log(`[ADMIN ROUTER OPTIONS HANDLER] Sending 204 for ${req.originalUrl}`);
+  res.sendStatus(204);
+});
+
+
 const JWT_SECRET = process.env.JWT_SECRET;
 const ADMIN_USERNAME_ENV = process.env.ADMIN_USERNAME;
 const ADMIN_PASSWORD_ENV = process.env.ADMIN_PASSWORD;
@@ -66,10 +82,11 @@ router.post('/login', async (req: Request, res: Response) => {
           // Set HttpOnly cookie containing the JWT
           res.cookie('admin_auth_token', token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
-            sameSite: 'lax', // Or 'strict' depending on your needs
+            secure: true, // Must be true if SameSite=None
+            sameSite: 'none', // Allow cross-domain cookie sending
             maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days in milliseconds
-            path: '/', // Cookie available for all paths
+            path: '/',
+            // domain: '.yourcommondomain.com' // Only if applicable and you have one
           });
 
           // Also return token in response body for client-side convenience if needed,

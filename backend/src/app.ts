@@ -54,6 +54,19 @@ app.use(cookieParser()); // Use cookie-parser middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// VERY SPECIFIC OPTIONS HANDLER FOR THE PROBLEMATIC ADMIN ROUTE
+// Placed before other API routes and static serving.
+app.options('/api/admin/settings/discover-rate-limit', (req, res) => {
+  console.log(`[SPECIFIC ADMIN OPTIONS HANDLER] Intercepted OPTIONS for ${req.originalUrl}`);
+  // Manually set CORS headers based on your corsOptions
+  res.header('Access-Control-Allow-Origin', adminPanelOrigin);
+  res.header('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS'); // Ensure PUT is listed
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization'); // Ensure all actual request headers are listed
+  res.header('Access-Control-Allow-Credentials', 'true');
+  console.log(`[SPECIFIC ADMIN OPTIONS HANDLER] Sending 204 for ${req.originalUrl}`);
+  res.sendStatus(204); // Send 204 No Content and end the response
+});
+
 // Static file serving
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
@@ -88,22 +101,11 @@ app.get('/api/matches/quota/test-debug', (req: Request, res: Response) => {
 
 app.use('/api/matches', matchesRoutes);
 
-// Create a dedicated router to handle OPTIONS for /api/admin paths
-const adminOptionsRouter = express.Router();
-adminOptionsRouter.options('/*', (req, res) => {
-  console.log(`[ADMIN OPTIONS ROUTER] Intercepted OPTIONS for ${req.originalUrl} (path within admin: ${req.path})`);
-  // Manually set CORS headers based on your corsOptions
-  res.header('Access-Control-Allow-Origin', adminPanelOrigin);
-  res.header('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS'); // Ensure PUT is here
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization'); // Ensure relevant headers are here
-  res.header('Access-Control-Allow-Credentials', 'true');
-  console.log(`[ADMIN OPTIONS ROUTER] Sending 204 for ${req.originalUrl}`);
-  res.sendStatus(204);
-});
+// Remove adminOptionsRouter and the app.options('/api/admin/*')
+// Try a direct app.options for the specific problematic path, placed very early.
 
-// Mount this OPTIONS handler router BEFORE the main adminRoutes
-app.use('/api/admin', adminOptionsRouter);
 app.use('/api/admin', adminRoutes); // Register main admin routes
+// The specific OPTIONS handler for the problematic route will be added before other routes.
 
 // Log available routes for debugging
 app._router.stack.forEach(function(r: any) {
