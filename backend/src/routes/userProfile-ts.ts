@@ -268,20 +268,32 @@ let discoverLimiterInstance: ReturnType<typeof rateLimit> = rateLimit(DEFAULT_DI
 export async function updateDiscoverLimiter() {
   let config = { ...DEFAULT_DISCOVER_RATE_LIMIT_CONFIG };
   try {
+    console.log(`[RateLimit UPDATE] Attempting to find AppSetting with key: ${DISCOVER_RATE_LIMIT_KEY}`);
     const dbSetting = await AppSetting.findOne({ key: DISCOVER_RATE_LIMIT_KEY });
-    if (dbSetting && dbSetting.value && typeof dbSetting.value.windowMs === 'number' && typeof dbSetting.value.max === 'number') {
-      config.windowMs = dbSetting.value.windowMs;
-      config.max = dbSetting.value.max;
-      if (dbSetting.value.message && typeof dbSetting.value.message === 'string') {
-        config.message.message = dbSetting.value.message;
+    if (dbSetting) {
+      console.log(`[RateLimit UPDATE] Found DB setting. Value:`, JSON.stringify(dbSetting.value, null, 2));
+      if (dbSetting.value && typeof dbSetting.value.windowMs === 'number' && typeof dbSetting.value.max === 'number') {
+        config.windowMs = dbSetting.value.windowMs;
+        config.max = dbSetting.value.max;
+        if (dbSetting.value.message && typeof dbSetting.value.message === 'string') {
+          config.message.message = dbSetting.value.message;
+        } else {
+          // Retain default message if not in DB setting or not a string
+          console.log(`[RateLimit UPDATE] DB setting for message is missing or not a string, using default message: "${config.message.message}"`);
+        }
+        console.log(`[RateLimit UPDATE] Successfully applied DB config for /discover: ${config.max} req / ${config.windowMs / 1000}s. Message: "${config.message.message}"`);
+      } else {
+        console.log(`[RateLimit UPDATE] DB setting found but 'value' or 'windowMs'/'max' fields are invalid or not numbers. Using defaults.`);
+        console.log(`[RateLimit UPDATE] Default config being used: ${config.max} req / ${config.windowMs / 1000}s. Message: "${config.message.message}"`);
       }
-      console.log(`[RateLimit] Re-configured /discover limiter from DB: ${config.max} req / ${config.windowMs / 1000}s`);
     } else {
-      console.log(`[RateLimit] No DB config found for /discover limiter, using defaults: ${config.max} req / ${config.windowMs / 1000}s`);
+      console.log(`[RateLimit UPDATE] No DB config found for key '${DISCOVER_RATE_LIMIT_KEY}'. Using defaults.`);
+      console.log(`[RateLimit UPDATE] Default config being used: ${config.max} req / ${config.windowMs / 1000}s. Message: "${config.message.message}"`);
     }
   } catch (error) {
-    console.error('[RateLimit] Error fetching/applying discover rate limit settings, using defaults:', error);
-    // Keep current config (which might be defaults) if DB fetch fails
+    console.error('[RateLimit UPDATE] Error fetching discover rate limit settings from DB, using defaults:', error);
+    // Log the default config being used in case of an error during DB fetch
+    console.log(`[RateLimit UPDATE] Default config due to error: ${config.max} req / ${config.windowMs / 1000}s. Message: "${config.message.message}"`);
   }
 
   // Create a new limiter instance with the (potentially updated) config
