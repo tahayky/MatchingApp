@@ -42,17 +42,18 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleString());
 
   useEffect(() => {
+    console.log('[DashboardPage] useEffect running. Token from getAdminToken() at start of effect:', getAdminToken());
     const fetchDashboardData = async () => {
       setLoading(true);
       setError(null);
       const token = getAdminToken(); // Use token from store
 
       if (!token) {
-        console.log('[DashboardPage] No admin token found, redirecting to login.');
+        console.log('[DashboardPage] No admin token found inside fetchDashboardData, redirecting to login.');
         router.push('/login');
         return;
       }
-
+      console.log('[DashboardPage] Token found in fetchDashboardData:', token ? 'Exists' : 'MISSING');
       try {
         const response = await fetch(getApiUrl('admin/stats'), {
           method: 'GET',

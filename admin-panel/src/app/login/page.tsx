@@ -4,7 +4,7 @@ import { useState } from 'react' // Removed useEffect
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getApiUrl } from '@/utils/apiConfig' // Import getApiUrl
-import { setAdminToken } from '@/utils/adminAuthStore'; // Import token store functions
+import { setAdminToken, getAdminToken } from '@/utils/adminAuthStore'; // Import token store functions
 
 // const ADMIN_AUTH_TOKEN_KEY = 'adminAuthToken'; // No longer used
 
@@ -49,9 +49,9 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (response.ok && data.success && data.token) {
-        // Store the token using our in-memory store (or your state management solution)
+        // Store the token using our sessionStorage-backed store
         setAdminToken(data.token);
-        console.log('[Login Page] Login successful, token stored in JS memory.');
+        console.log('[Login Page] Login successful, token stored via setAdminToken. Value from getAdminToken():', getAdminToken());
         router.push('/dashboard'); // Redirect to dashboard
       } else {
         setError(data.message || 'Login failed. Please check your credentials.');
