@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react' // Added useEffect
+import { useState } from 'react' // Removed useEffect
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getApiUrl } from '@/utils/apiConfig' // Import getApiUrl
 
-const ADMIN_AUTH_TOKEN_KEY = 'adminAuthToken'; // Key for localStorage
+// const ADMIN_AUTH_TOKEN_KEY = 'adminAuthToken'; // No longer used
 
 export default function LoginPage() {
   const router = useRouter()
@@ -47,8 +47,11 @@ export default function LoginPage() {
 
       const data = await response.json();
 
-      if (response.ok && data.success && data.token) {
-        localStorage.setItem(ADMIN_AUTH_TOKEN_KEY, data.token);
+      if (response.ok && data.success) { // Token from JSON response is not strictly needed if HttpOnly cookie is set
+        // Backend sets HttpOnly cookie. Frontend can use data.success to redirect.
+        // No need to store token from response in localStorage if relying on HttpOnly cookie.
+        // localStorage.setItem(ADMIN_AUTH_TOKEN_KEY, data.token);
+        console.log('[Login Page] Login successful, backend should have set HttpOnly cookie.');
         router.push('/dashboard'); // Redirect to dashboard
       } else {
         setError(data.message || 'Login failed. Please check your credentials.');
@@ -61,14 +64,16 @@ export default function LoginPage() {
     }
   };
 
-  // Redirect to dashboard if already logged in (e.g., token in localStorage)
-  useEffect(() => {
-    const token = localStorage.getItem(ADMIN_AUTH_TOKEN_KEY);
-    if (token) {
-      // Optionally: verify token with backend here before redirecting for added security
-      router.push('/dashboard');
-    }
-  }, [router]);
+  // Remove automatic redirect based on localStorage token,
+  // as we want to rely on HttpOnly cookie session managed by the browser & backend.
+  // If a user hits /login but has a valid HttpOnly cookie,
+  // backend protected routes would work, or a check could be made on dashboard load.
+  // useEffect(() => {
+  //   const token = localStorage.getItem(ADMIN_AUTH_TOKEN_KEY);
+  //   if (token) {
+  //     router.push('/dashboard');
+  //   }
+  // }, [router]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 p-4">

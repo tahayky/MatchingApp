@@ -79,15 +79,20 @@ router.post('/login', async (req: Request, res: Response) => {
             return res.status(500).json({ success: false, message: 'Error generating authentication token' });
           }
           
-          // Set HttpOnly cookie containing the JWT
-          res.cookie('admin_auth_token', token, {
+          console.log('[ADMIN LOGIN] JWT generated successfully. Token:', token ? 'Exists' : 'MISSING!!!');
+          const cookieOptions = {
             httpOnly: true,
-            secure: true, // Must be true if SameSite=None
-            sameSite: 'none', // Allow cross-domain cookie sending
-            maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days in milliseconds
+            secure: true,
+            sameSite: 'none' as 'none', // Explicitly type for clarity
+            maxAge: 1000 * 60 * 60 * 24 * 7,
             path: '/',
-            // domain: '.yourcommondomain.com' // Only if applicable and you have one
-          });
+          };
+          console.log('[ADMIN LOGIN] Attempting to set cookie with options:', cookieOptions);
+          
+          // Set HttpOnly cookie containing the JWT
+          res.cookie('admin_auth_token', token, cookieOptions);
+          
+          console.log('[ADMIN LOGIN] Cookie "admin_auth_token" should have been set.');
 
           // Also return token in response body for client-side convenience if needed,
           // though primary session management should rely on the HttpOnly cookie.
