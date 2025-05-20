@@ -256,7 +256,7 @@ router.post('/photos', protect, upload.single('photo'), async (req: AuthRequest,
 const DEFAULT_DISCOVER_RATE_LIMIT_CONFIG = {
   windowMs: 10 * 1000, // 10 seconds
   max: 5,
-  message: {
+  message: { // Ensure this is an object
     success: false,
     message: 'Too many discovery requests, please try again after 10 seconds.',
   },
@@ -267,7 +267,10 @@ let discoverLimiterInstance: ReturnType<typeof rateLimit> = rateLimit(DEFAULT_DI
 
 // Function to create/update the rate limiter instance
 export async function updateDiscoverLimiter() {
-  let config = { ...DEFAULT_DISCOVER_RATE_LIMIT_CONFIG };
+  let config = { ...DEFAULT_DISCOVER_RATE_LIMIT_CONFIG }; // Start with defaults
+  // Deep copy message object to avoid shared reference issues
+  config.message = { ...DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message };
+
   try {
     console.log(`[RateLimit UPDATE] Attempting to find AppSetting with key: ${DISCOVER_RATE_LIMIT_KEY}`);
     const dbSetting = await AppSetting.findOne({ key: DISCOVER_RATE_LIMIT_KEY });
@@ -276,40 +279,62 @@ export async function updateDiscoverLimiter() {
       if (dbSetting.value && typeof dbSetting.value.windowMs === 'number' && typeof dbSetting.value.max === 'number') {
         config.windowMs = dbSetting.value.windowMs;
         config.max = dbSetting.value.max;
-        if (dbSetting.value.message && typeof dbSetting.value.message === 'string') {
-          config.message.message = dbSetting.value.message;
-        } else {
-          // Retain default message if not in DB setting or not a string
-          console.log(`[RateLimit UPDATE] DB setting for message is missing or not a string, using default message: "${config.message.message}"`);
+        // Ensure config.message is an object before trying to assign to its property
+        if (typeof config.message !== 'object' || config.message === null) {
+            config.message = { success: false, message: '' };
         }
-        console.log(`[RateLimit UPDATE] Successfully applied DB config for /discover: ${config.max} req / ${config.windowMs / 1000}s. Message: "${config.message.message}"`);
+        if (dbSetting.value.message && typeof dbSetting.value.message === 'string') {
+          (config.message as { success: boolean; message: string }).message = dbSetting.value.message;
+        } else if (dbSetting.value.message && typeof dbSetting.value.message === 'object') {
+            // If the message in DB is already an object like { success: false, message: "..." }
+            config.message = dbSetting.value.message;
+        } else {
+          console.log(`[RateLimit UPDATE] DB setting for message is missing or not a compatible string/object, using default message: "${DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message.message}"`);
+          (config.message as { success: boolean; message: string }).message = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message.message;
+        }
+        (config.message as { success: boolean; message: string }).success = false; // Ensure success is false for rate limit messages
+        console.log(`[RateLimit UPDATE] Successfully applied DB config for /discover: ${config.max} req / ${config.windowMs / 1000}s. Message: "${JSON.stringify(config.message)}"`);
       } else {
         console.log(`[RateLimit UPDATE] DB setting found but 'value' or 'windowMs'/'max' fields are invalid or not numbers. Using defaults.`);
-        console.log(`[RateLimit UPDATE] Default config being used: ${config.max} req / ${config.windowMs / 1000}s. Message: "${config.message.message}"`);
+        console.log(`[RateLimit UPDATE] Default config being used: ${config.max} req / ${config.windowMs / 1000}s. Message: "${JSON.stringify(config.message)}"`);
       }
     } else {
       console.log(`[RateLimit UPDATE] No DB config found for key '${DISCOVER_RATE_LIMIT_KEY}'. Using defaults.`);
-      console.log(`[RateLimit UPDATE] Default config being used: ${config.max} req / ${config.windowMs / 1000}s. Message: "${config.message.message}"`);
+      console.log(`[RateLimit UPDATE] Default config being used: ${config.max} req / ${config.windowMs / 1000}s. Message: "${JSON.stringify(config.message)}"`);
     }
   } catch (error) {
     console.error('[RateLimit UPDATE] Error fetching discover rate limit settings from DB, using defaults:', error);
-    // Log the default config being used in case of an error during DB fetch
-    console.log(`[RateLimit UPDATE] Default config due to error: ${config.max} req / ${config.windowMs / 1000}s. Message: "${config.message.message}"`);
+    console.log(`[RateLimit UPDATE] Default config due to error: ${config.max} req / ${config.windowMs / 1000}s. Message: "${JSON.stringify(config.message)}"`);
   }
 
-  // Create a new limiter instance with the (potentially updated) config
-  // Note: express-rate-limit instances are typically not mutable in this way for windowMs/max.
-  // We are replacing the middleware instance.
   discoverLimiterInstance = rateLimit({
     windowMs: config.windowMs,
     max: config.max,
-    message: config.message,
+    // The 'message' option is used by the default handler. Our custom handler below will use optionsUsed.message.
+    // It's good to keep config.message populated correctly for consistency or if standardHeaders: 'draft-7' (which sends a Retry-After header with a message) is used.
+    message: config.message, 
     keyGenerator: (req: Request) => {
       const authReq = req as AuthRequest;
       return authReq.user?._id?.toString() || req.ip;
     },
-    standardHeaders: true,
-    legacyHeaders: false,
+    handler: (req: Request, res: Response, next: NextFunction, optionsUsed: any) => {
+      const authReq = req as AuthRequest; // Cast to access user
+      const key = authReq.user?._id?.toString() || authReq.ip;
+      // Construct the message payload. Ensure it's an object.
+      let messagePayload = optionsUsed.message;
+      if (typeof messagePayload === 'string') {
+        messagePayload = { success: false, message: messagePayload };
+      } else if (typeof messagePayload !== 'object' || messagePayload === null) {
+        messagePayload = { success: false, message: 'Too many requests, please try again later.' }; // Fallback
+      }
+      // Ensure 'success: false' for rate limit responses
+      messagePayload.success = false;
+
+      console.log(`[RATE LIMIT EXCEEDED HANDLER] For /discover. Key: ${key}. UserID: ${authReq.user?._id}, IP: ${authReq.ip}. Max: ${optionsUsed.max}. WindowMs: ${optionsUsed.windowMs}.`);
+      res.status(optionsUsed.statusCode || 429).json(messagePayload);
+    },
+    standardHeaders: true, // Send X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset headers
+    legacyHeaders: false, // Do not send X-RateLimit-* (old) headers
   });
 }
 
@@ -322,8 +347,8 @@ updateDiscoverLimiter().then(() => {
   // discoverLimiterInstance is already initialized with defaults above, so it's a safe fallback.
 });
 
-router.get('/discover', protect, (req: Request, res: Response, next: NextFunction) => {
-  const authReq = req as AuthRequest;
+router.get('/discover', protect, (req: Request, res: Response, next: NextFunction) => { 
+  const authReq = req as AuthRequest; 
   const key = authReq.user?._id?.toString() || authReq.ip;
   const requestTimestamp = new Date().toISOString();
   console.log(`[${requestTimestamp}] [RATE LIMITER PRE-INVOKE] For /discover. Key: ${key}. UserID: ${authReq.user?._id}, IP: ${authReq.ip}`);
@@ -347,7 +372,7 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
     });
   } else {
     console.error(`[${new Date().toISOString()}] [RATE LIMITER CRITICAL] discoverLimiterInstance is undefined! Bypassing rate limit.`);
-    next();
+    next(); 
   }
 }, async (req: AuthRequest, res: Response) => {
   try {
@@ -466,9 +491,9 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
 
     const potentialMatches = await User.find(query)
       .select('_id name dateOfBirth gender photos bio location interests occupation education') // Select necessary fields
-      .limit(10); // Changed from 20 to 10
+      .limit(20); // Reverted from 10 back to 20
     
-    console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} potential matches from DB (query was limited to 10).`);
+    console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} potential matches from DB.`);
 
     // Format users before sending
     const formattedUsers = potentialMatches.map(u => {
