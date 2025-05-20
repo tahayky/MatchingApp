@@ -322,21 +322,36 @@ updateDiscoverLimiter().then(() => {
   // discoverLimiterInstance is already initialized with defaults above, so it's a safe fallback.
 });
 
-router.get('/discover', protect, (req: Request, res: Response, next: NextFunction) => { // Added NextFunction type
-  const authReq = req as AuthRequest; // Cast req to AuthRequest to access user potentially
+router.get('/discover', protect, (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthRequest;
   const key = authReq.user?._id?.toString() || authReq.ip;
-  console.log(`[RATE LIMITER INVOKED] For /discover. Key: ${key}. UserID: ${authReq.user?._id}, IP: ${authReq.ip}`);
+  const requestTimestamp = new Date().toISOString();
+  console.log(`[${requestTimestamp}] [RATE LIMITER PRE-INVOKE] For /discover. Key: ${key}. UserID: ${authReq.user?._id}, IP: ${authReq.ip}`);
   
-  // discoverLimiterInstance will always exist due to initial default setup
   if (discoverLimiterInstance) {
-    discoverLimiterInstance(req, res, next);
+    discoverLimiterInstance(req, res, (err?: any) => { // Added err parameter to next callback
+      const afterTimestamp = new Date().toISOString();
+      if (err) {
+        // This 'err' would typically be if the rate limiter itself had an operational error,
+        // not necessarily a rate limit exceeded error (which sends a 429 response directly).
+        console.error(`[${afterTimestamp}] [RATE LIMITER ERROR] Error from discoverLimiterInstance:`, err);
+        return next(err); // Pass on the error
+      }
+      // Check if response was already sent (e.g., 429 by the limiter)
+      if (!res.headersSent) {
+        console.log(`[${afterTimestamp}] [RATE LIMITER POST-INVOKE] Passed for /discover. Key: ${key}. Proceeding to main handler.`);
+        next();
+      } else {
+        console.log(`[${afterTimestamp}] [RATE LIMITER POST-INVOKE] Response already sent for /discover (likely 429). Key: ${key}. Status: ${res.statusCode}`);
+      }
+    });
   } else {
-    // This case should ideally not be reached if discoverLimiterInstance is always initialized.
-    console.error("[RATE LIMITER ERROR] discoverLimiterInstance is unexpectedly undefined! Proceeding without rate limiting for this request.");
+    console.error(`[${new Date().toISOString()}] [RATE LIMITER CRITICAL] discoverLimiterInstance is undefined! Bypassing rate limit.`);
     next();
   }
 }, async (req: AuthRequest, res: Response) => {
   try {
+    console.log(`[${new Date().toISOString()}] [DISCOVER HANDLER] Entered main handler for /discover. UserID: ${req.user?._id}`);
     // The protect middleware should have already populated req.user
     if (!req.user || !req.user._id) {
       return res.status(401).json({
@@ -451,9 +466,9 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
 
     const potentialMatches = await User.find(query)
       .select('_id name dateOfBirth gender photos bio location interests occupation education') // Select necessary fields
-      .limit(20);
+      .limit(10); // Changed from 20 to 10
     
-    console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} potential matches from DB.`);
+    console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} potential matches from DB (query was limited to 10).`);
 
     // Format users before sending
     const formattedUsers = potentialMatches.map(u => {
