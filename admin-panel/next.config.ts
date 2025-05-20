@@ -7,7 +7,8 @@ const securityHeaders = [
     // 'unsafe-eval' might be needed for some dev features or specific libraries.
     // 'unsafe-inline' for script-src is generally discouraged but might be needed for Next.js internal scripts or styles from some UI libs if not using nonces.
     // For styles, 'unsafe-inline' is often needed for dynamically injected styles by UI components.
-    value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; object-src 'none'; frame-ancestors 'none';"
+    // Added connect-src for the backend API.
+    value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; connect-src 'self' https://matchingapp-648v.onrender.com;"
   },
   {
     key: 'X-Content-Type-Options',
