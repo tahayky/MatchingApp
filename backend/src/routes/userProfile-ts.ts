@@ -232,7 +232,7 @@ export async function updateDiscoverLimiter() {
   
   console.log(`[RateLimit Instantiation] Creating new rateLimit instance with: max=${currentMax}, windowMs=${currentWindowMs}`);
   discoverLimiterInstance = rateLimit({
-    store: store, // Use MongoStore if mongoUri is available, otherwise undefined (defaults to MemoryStore)
+    store: store, 
     windowMs: currentWindowMs,
     max: currentMax,
     message: { success: false, message: currentMessageString }, 
@@ -370,9 +370,9 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
 
     const potentialMatches = await User.find(query)
       .select('_id name dateOfBirth gender photos bio location interests occupation education')
-      .limit(20);
+      .limit(5); // Corrected to 5 as per user's primary requirement
     
-    console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} potential matches from DB.`);
+    console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} potential matches from DB (query was limited to 5).`);
 
     const formattedUsers = potentialMatches.map(u => {
       let age;
