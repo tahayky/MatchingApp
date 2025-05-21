@@ -263,11 +263,20 @@ router.post('/photos', protect, upload.single('photo'), async (req: AuthRequest,
 const limiter = expressLimiter(router); // Apply to the router instance
 
 limiter({
-  path: '/discover', // Apply specifically to the /discover path on this router
+  path: '/discover',
   method: 'get',
-  lookup: ['user._id', 'ip'], // Look up by user ID first, then IP
-  total: 10, // Max 10 requests
-  expire: 1000 * 10, // 10 seconds
+  lookup: function(req: Request, res: Response, opts: any, next: NextFunction) {
+    // Custom lookup function to safely access req.user
+    const authReq = req as AuthRequest; // Cast to our interface
+    if (authReq.user && authReq.user._id) {
+      opts.lookup = 'user._id'; // Tell limiter to use this path
+    } else {
+      opts.lookup = 'ip'; // Fallback to IP if user or user._id is not available
+    }
+    return next();
+  },
+  total: 10,
+  expire: 1000 * 10,
   onRateLimited: function (req: Request, res: Response, next: NextFunction) {
     const authReq = req as AuthRequest;
     const key = authReq.user?._id?.toString() || authReq.ip;
