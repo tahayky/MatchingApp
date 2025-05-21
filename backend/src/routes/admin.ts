@@ -7,7 +7,7 @@ import SubscriptionPlan, { ISubscriptionPlan } from '../models/SubscriptionPlan'
 import AppSetting, { IAppSetting } from '../models/AppSetting'; // Import AppSetting model
 import Match from '../models/Match'; // Import Match model
 import { isAdminAuthenticated } from '../middleware/adminAuth'; // Import the new middleware
-// import { updateDiscoverLimiter } from './userProfile-ts'; // Removed as updateDiscoverLimiter was removed
+import { updateDiscoverLimiter, updateProfilesPerPageSetting } from '../routes/userProfile-ts'; // Import updaters
 
 // Load environment variables
 dotenv.config();
@@ -534,19 +534,85 @@ router.put('/settings/discover-rate-limit', isAdminAuthenticated, async (req: Re
 });
 
 // @route   POST /api/admin/settings/refresh-discover-rate-limit
-// @desc    Refreshes the discover rate limiter configuration from the database
+// @desc    Refreshes the discover settings (rate limiter & profiles per page) from the database
 // @access  Private (Admin)
-// This route is now non-functional as updateDiscoverLimiter was tied to the old express-rate-limit implementation
-router.post('/settings/refresh-discover-rate-limit', isAdminAuthenticated, async (req: Request, res: Response) => {
+router.post('/settings/refresh-discover-settings', isAdminAuthenticated, async (req: Request, res: Response) => {
   try {
-    // await updateDiscoverLimiter(); // updateDiscoverLimiter is removed
-    console.warn('[ADMIN REFRESH-RATE-LIMIT] This endpoint is currently non-functional as rate limiting was switched to express-limiter with hardcoded values.');
-    res.status(501).json({ success: false, message: 'Rate limiter refresh mechanism needs to be re-implemented for the current limiter.' });
+    await updateDiscoverLimiter(); // Refresh rate limit settings
+    await updateProfilesPerPageSetting(); // Refresh profiles per page setting
+    res.json({ success: true, message: 'Discovery settings (rate limit and profiles per page) have been refreshed.' });
   } catch (error: unknown) {
-    console.error('Error attempting to refresh discover rate limiter (endpoint non-functional):', error);
+    console.error('Error refreshing discovery settings:', error);
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred while refreshing discovery settings.';
+    res.status(500).json({ success: false, message });
+  }
+});
+
+
+// --- Profiles Per Page Settings ---
+// Key must match the one in userProfile-ts.ts
+const PROFILES_PER_PAGE_KEY_ADMIN = 'discoverProfilesPerPage';
+const DEFAULT_PROFILES_PER_PAGE_ADMIN_FALLBACK = 5; // Fallback if not in DB
+
+// @route   GET /api/admin/settings/profiles-per-page
+// @desc    Get the current profiles per page setting for discovery
+// @access  Private (Admin)
+router.get('/settings/profiles-per-page', isAdminAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const setting = await AppSetting.findOne({ key: PROFILES_PER_PAGE_KEY_ADMIN });
+    if (setting && setting.value && typeof setting.value.count === 'number') {
+      res.json({ success: true, data: { count: setting.value.count } });
+    } else {
+      // If not set, return default values (but don't save them here)
+      res.json({
+        success: true,
+        data: { count: DEFAULT_PROFILES_PER_PAGE_ADMIN_FALLBACK },
+        message: 'No setting found in DB, returning default.'
+      });
+    }
+  } catch (error: unknown) {
+    console.error('Error fetching profiles per page setting:', error);
     const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
     res.status(500).json({ success: false, message });
   }
 });
+
+// @route   PUT /api/admin/settings/profiles-per-page
+// @desc    Update the profiles per page setting for discovery
+// @access  Private (Admin)
+router.put('/settings/profiles-per-page', isAdminAuthenticated, async (req: Request, res: Response) => {
+  const { count } = req.body;
+
+  if (typeof count !== 'number' || count <= 0 || !Number.isInteger(count)) {
+    return res.status(400).json({ success: false, message: 'Invalid input: count must be a positive integer.' });
+  }
+
+  try {
+    const newSettingValue = { count }; // Store as { value: { count: X } }
+
+    const updatedSetting = await AppSetting.findOneAndUpdate(
+      { key: PROFILES_PER_PAGE_KEY_ADMIN },
+      {
+        key: PROFILES_PER_PAGE_KEY_ADMIN,
+        value: newSettingValue, // This will be stored under the 'value' field of AppSetting
+        description: 'Number of profiles to return per page in discovery feed.'
+      },
+      { upsert: true, new: true, runValidators: true }
+    );
+
+    await updateProfilesPerPageSetting(); // Trigger update in userProfile-ts.ts to use the new value
+
+    res.json({
+      success: true,
+      message: 'Profiles per page setting updated successfully!',
+      data: updatedSetting.value // Return the 'value' object which contains 'count'
+    });
+  } catch (error: unknown) {
+    console.error('Error updating profiles per page setting:', error);
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    res.status(500).json({ success: false, message });
+  }
+});
+
 
 export default router;

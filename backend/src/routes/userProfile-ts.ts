@@ -1,7 +1,7 @@
 console.log('[userProfile-ts.ts] Module loading...');
 import express, { Request, Response, Router, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
-import MongoStore from 'rate-limit-mongo'; // Import MongoStore
+import MongoStore from 'rate-limit-mongo';
 import AppSetting from '../models/AppSetting';
 import mongoose from 'mongoose';
 import multer from 'multer';
@@ -11,13 +11,11 @@ import User, { IUser, IPhoto, IPreferences, IRejectData, ILikeData } from '../mo
 import Match from '../models/Match';
 import { protect } from '../middleware/auth';
 
-// Extend Express Request interface
 interface AuthRequest extends Request {
   user?: IUser;
   file?: Express.Multer.File;
 }
 
-// Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: function(req: AuthRequest, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) {
     const uploadDir = 'uploads/profiles';
@@ -49,22 +47,17 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
 const upload = multer({ 
   storage, 
   fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+  limits: { fileSize: 5 * 1024 * 1024 }
 });
 
 const router: Router = express.Router();
 
-// Profile Create/Update Route
 router.post('/', protect, async (req: AuthRequest, res: Response) => {
   try {
-    if (!req.user || !req.user._id) {
-      return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
-    }
+    if (!req.user || !req.user._id) { return res.status(401).json({ success: false, message: 'Not authorized, user not found' }); }
     const { bio, coordinates, city, country, interests, occupation, education, height, ageRangeMin, ageRangeMax, maxDistance } = req.body;
     const userToUpdate = await User.findById(req.user._id);
-    if (!userToUpdate) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
+    if (!userToUpdate) { return res.status(404).json({ success: false, message: 'User not found' }); }
     if (bio !== undefined) userToUpdate.bio = bio;
     userToUpdate.location = {
         type: 'Point',
@@ -72,9 +65,7 @@ router.post('/', protect, async (req: AuthRequest, res: Response) => {
         city: city || userToUpdate.location?.city,
         country: country || userToUpdate.location?.country
     };
-    if (interests !== undefined) {
-        userToUpdate.interests = Array.isArray(interests) ? interests : (interests as string).split(',').map((interest: string) => interest.trim());
-    }
+    if (interests !== undefined) { userToUpdate.interests = Array.isArray(interests) ? interests : (interests as string).split(',').map((interest: string) => interest.trim()); }
     if (occupation !== undefined) userToUpdate.occupation = occupation;
     if (education !== undefined) userToUpdate.education = education;
     if (height !== undefined) userToUpdate.height = height;
@@ -99,7 +90,6 @@ router.post('/', protect, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Get My Profile Route
 router.get('/me', protect, async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user || !req.user._id) { return res.status(401).json({ success: false, message: 'Not authorized, user not found'}); }
@@ -113,7 +103,6 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Upload Profile Photo Route
 router.post('/photos', protect, upload.single('photo'), async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user || !req.user._id) { return res.status(401).json({ success: false, message: 'Not authorized, user not found' });}
@@ -137,7 +126,6 @@ router.post('/photos', protect, upload.single('photo'), async (req: AuthRequest,
   }
 });
 
-// Set Main Photo Route
 router.put('/photos/:photoId/main', protect, async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user || !req.user._id) { return res.status(401).json({ success: false, message: 'Not authorized, user not found' });}
@@ -165,16 +153,47 @@ router.put('/photos/:photoId/main', protect, async (req: AuthRequest, res: Respo
   }
 });
 
-// --- Discover Profiles Route with express-rate-limit ---
+// --- Settings for Discover Profiles ---
 const DEFAULT_DISCOVER_RATE_LIMIT_CONFIG = {
   windowMs: 10 * 1000, 
   max: 5, 
   message: 'Too many discovery requests, please try again after 10 seconds.',
 };
 const DISCOVER_RATE_LIMIT_KEY = 'discoverRateLimit';
+const PROFILES_PER_PAGE_KEY = 'discoverProfilesPerPage'; // Key for profiles per page setting
+const DEFAULT_PROFILES_PER_PAGE = 5; // Default profiles per page
 
 let discoverLimiterInstance: ReturnType<typeof rateLimit>; 
+let currentProfilesPerPage: number = DEFAULT_PROFILES_PER_PAGE; // Global variable for profiles per page
 
+// Function to update the "profiles per page" setting from DB
+export async function updateProfilesPerPageSetting() {
+  try {
+    console.log(`[ProfilesPerPage UPDATE] Attempting to find AppSetting with key: ${PROFILES_PER_PAGE_KEY}`);
+    const dbSetting = await AppSetting.findOne({ key: PROFILES_PER_PAGE_KEY });
+    // Expecting the setting to be stored as { value: { count: NUMBER } }
+    if (dbSetting && dbSetting.value && typeof dbSetting.value.count === 'number' && dbSetting.value.count > 0) {
+      currentProfilesPerPage = dbSetting.value.count;
+      console.log(`[ProfilesPerPage UPDATE] Successfully applied DB config: ${currentProfilesPerPage} profiles per page.`);
+    } else {
+      currentProfilesPerPage = DEFAULT_PROFILES_PER_PAGE;
+      if (dbSetting && dbSetting.value) {
+        console.log(`[ProfilesPerPage UPDATE] DB setting found but 'value.count' is invalid or not a positive number. Value:`, JSON.stringify(dbSetting.value));
+      } else if (dbSetting) {
+        console.log(`[ProfilesPerPage UPDATE] DB setting found but 'value' is missing.`);
+      } else {
+        console.log(`[ProfilesPerPage UPDATE] No DB config found for key '${PROFILES_PER_PAGE_KEY}'.`);
+      }
+      console.log(`[ProfilesPerPage UPDATE] Using default: ${currentProfilesPerPage} profiles per page.`);
+    }
+  } catch (error) {
+    currentProfilesPerPage = DEFAULT_PROFILES_PER_PAGE;
+    console.error('[ProfilesPerPage UPDATE] Error fetching profiles per page setting from DB, using defaults:', error);
+    console.log(`[ProfilesPerPage UPDATE] Default due to error: ${currentProfilesPerPage} profiles per page.`);
+  }
+}
+
+// Function to update the rate limiter settings from DB
 export async function updateDiscoverLimiter() {
   let currentWindowMs = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs;
   let currentMax = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.max;
@@ -185,33 +204,28 @@ export async function updateDiscoverLimiter() {
     const dbSetting = await AppSetting.findOne({ key: DISCOVER_RATE_LIMIT_KEY });
     if (dbSetting) {
       console.log(`[RateLimit UPDATE] Found DB setting. Value:`, JSON.stringify(dbSetting.value, null, 2));
+      // Expecting rate limit setting to be { value: { windowMs: NUMBER, max: NUMBER, message: STRING } }
       if (dbSetting.value && typeof dbSetting.value.windowMs === 'number' && typeof dbSetting.value.max === 'number') {
         currentWindowMs = dbSetting.value.windowMs;
         currentMax = dbSetting.value.max;
         if (dbSetting.value.message && typeof dbSetting.value.message === 'string') {
           currentMessageString = dbSetting.value.message;
-        } else if (dbSetting.value.message && typeof dbSetting.value.message === 'object' && typeof dbSetting.value.message.message === 'string') {
-          currentMessageString = dbSetting.value.message.message;
-        } else {
-          console.log(`[RateLimit UPDATE] DB setting for message is missing or not a string, using default message string: "${DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message}"`);
-          currentMessageString = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
+        } else { // Removed complex message object handling for simplicity from default
+          console.log(`[RateLimit UPDATE] DB setting for message is missing or not a string, using default message string.`);
         }
         console.log(`[RateLimit UPDATE] Successfully applied DB config for /discover: ${currentMax} req / ${currentWindowMs / 1000}s. Message string: "${currentMessageString}"`);
       } else {
         console.log(`[RateLimit UPDATE] DB setting found but 'value' or 'windowMs'/'max' fields are invalid or not numbers. Using defaults.`);
-        currentMessageString = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
-        console.log(`[RateLimit UPDATE] Default config being used: ${currentMax} req / ${currentWindowMs / 1000}s. Message string: "${currentMessageString}"`);
       }
     } else {
       console.log(`[RateLimit UPDATE] No DB config found for key '${DISCOVER_RATE_LIMIT_KEY}'. Using defaults.`);
-      currentMessageString = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
-      console.log(`[RateLimit UPDATE] Default config being used: ${currentMax} req / ${currentWindowMs / 1000}s. Message string: "${currentMessageString}"`);
     }
   } catch (error) {
     console.error('[RateLimit UPDATE] Error fetching discover rate limit settings from DB, using defaults:', error);
-    currentMessageString = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
-    console.log(`[RateLimit UPDATE] Default config due to error: ${currentMax} req / ${currentWindowMs / 1000}s. Message string: "${currentMessageString}"`);
   }
+  // Ensure defaults are used if any part of DB loading fails for rate limit message
+  if (!currentMessageString) currentMessageString = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
+
 
   const mongoUri = process.env.MONGODB_URI;
   let store;
@@ -256,7 +270,8 @@ export async function updateDiscoverLimiter() {
   });
 }
 
-console.log('[userProfile-ts.ts] Setting up initial call to updateDiscoverLimiter()...');
+// Initial calls to load settings at startup
+console.log('[userProfile-ts.ts] Setting up initial calls to updaters...');
 (async () => {
   try {
     console.log('[userProfile-ts.ts] EXECUTING initial call to updateDiscoverLimiter()...');
@@ -264,6 +279,13 @@ console.log('[userProfile-ts.ts] Setting up initial call to updateDiscoverLimite
     console.log('[userProfile-ts.ts] Initial updateDiscoverLimiter() call successfully completed.');
   } catch (error) {
     console.error("[userProfile-ts.ts] CRITICAL ERROR during initial execution of updateDiscoverLimiter():", error);
+  }
+  try {
+    console.log('[userProfile-ts.ts] EXECUTING initial call to updateProfilesPerPageSetting()...');
+    await updateProfilesPerPageSetting(); // Load profiles per page setting
+    console.log('[userProfile-ts.ts] Initial updateProfilesPerPageSetting() call successfully completed.');
+  } catch (error) {
+    console.error("[userProfile-ts.ts] CRITICAL ERROR during initial execution of updateProfilesPerPageSetting():", error);
   }
 })();
 
@@ -294,14 +316,11 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
 }, async (req: AuthRequest, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
-    // Client'tan gelen 'limit' parametresini yok say.
-    // Her zaman backend tarafından belirlenen sabit bir limit kullan (şimdilik 5).
-    // TODO: Bu 'profilesPerPageSetting' değerini veritabanındaki merkezi ayardan oku.
-    const profilesPerPageSetting = 5; 
-    const queryLimit = profilesPerPageSetting; // Artık client'tan gelen limit kullanılmıyor.
+    // Use the globally set currentProfilesPerPage, which is loaded from DB or defaults
+    const queryLimit = currentProfilesPerPage; 
     const skip = (page - 1) * queryLimit;
 
-    console.log(`[${new Date().toISOString()}] [DISCOVER HANDLER] Entered main handler for /discover. UserID: ${req.user?._id}. Page: ${page}, Return Limit (fixed by backend): ${queryLimit}`);
+    console.log(`[${new Date().toISOString()}] [DISCOVER HANDLER] Entered main handler for /discover. UserID: ${req.user?._id}. Page: ${page}, Return Limit (from DB/default): ${queryLimit}`);
     
     if (!req.user || !req.user._id) {
       return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
@@ -421,7 +440,6 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
   }
 });
 
-// Test route (optional, can be removed for production)
 router.get('/test', (req: Request, res: Response) => {
   res.json({ message: 'Profiles test route is working!' });
 });
