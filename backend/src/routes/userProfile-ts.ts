@@ -1,7 +1,8 @@
 console.log('[userProfile-ts.ts] Module loading...'); // LOG AT VERY TOP
-import express, { Request, Response, Router, NextFunction } from 'express'; // Added NextFunction
-import rateLimit from 'express-rate-limit';
+import express, { Request, Response, Router, NextFunction } from 'express';
 import AppSetting from '../models/AppSetting'; // Import AppSetting model
+// @ts-ignore - express-limiter might not have readily available types
+import expressLimiter from 'express-limiter';
 import mongoose from 'mongoose';
 import multer from 'multer';
 import path from 'path';
@@ -252,131 +253,37 @@ router.post('/photos', protect, upload.single('photo'), async (req: AuthRequest,
 // @desc    Get profiles for discovery feed based on preferences
 // @access  Private
 
-// Default rate limit settings (can be overridden by database)
-const DEFAULT_DISCOVER_RATE_LIMIT_CONFIG = {
-  windowMs: 10 * 1000, // 10 seconds
-  max: 5,
-  message: { // Ensure this is an object
-    success: false,
-    message: 'Too many discovery requests, please try again after 10 seconds.',
-  },
-};
-const DISCOVER_RATE_LIMIT_KEY = 'discoverRateLimit';
+// Remove express-rate-limit related code for now.
+// We will re-introduce dynamic configuration later if express-limiter works.
 
-let discoverLimiterInstance: ReturnType<typeof rateLimit> = rateLimit(DEFAULT_DISCOVER_RATE_LIMIT_CONFIG); // Initialize with defaults
+// Configure express-limiter
+// Note: express-limiter typically requires a Redis client.
+// For a simple test without Redis, it might not work as expected or might use a very basic in-memory store.
+// This is a basic setup attempt.
+const limiter = expressLimiter(router); // Apply to the router instance
 
-// Function to create/update the rate limiter instance
-export async function updateDiscoverLimiter() {
-  let config = { ...DEFAULT_DISCOVER_RATE_LIMIT_CONFIG }; // Start with defaults
-  // Deep copy message object to avoid shared reference issues
-  config.message = { ...DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message };
-
-  try {
-    console.log(`[RateLimit UPDATE] Attempting to find AppSetting with key: ${DISCOVER_RATE_LIMIT_KEY}`);
-    const dbSetting = await AppSetting.findOne({ key: DISCOVER_RATE_LIMIT_KEY });
-    if (dbSetting) {
-      console.log(`[RateLimit UPDATE] Found DB setting. Value:`, JSON.stringify(dbSetting.value, null, 2));
-      if (dbSetting.value && typeof dbSetting.value.windowMs === 'number' && typeof dbSetting.value.max === 'number') {
-        config.windowMs = dbSetting.value.windowMs;
-        config.max = dbSetting.value.max;
-        // Ensure config.message is an object before trying to assign to its property
-        if (typeof config.message !== 'object' || config.message === null) {
-            config.message = { success: false, message: '' };
-        }
-        if (dbSetting.value.message && typeof dbSetting.value.message === 'string') {
-          (config.message as { success: boolean; message: string }).message = dbSetting.value.message;
-        } else if (dbSetting.value.message && typeof dbSetting.value.message === 'object') {
-            // If the message in DB is already an object like { success: false, message: "..." }
-            config.message = dbSetting.value.message;
-        } else {
-          console.log(`[RateLimit UPDATE] DB setting for message is missing or not a compatible string/object, using default message: "${DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message.message}"`);
-          (config.message as { success: boolean; message: string }).message = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message.message;
-        }
-        (config.message as { success: boolean; message: string }).success = false; // Ensure success is false for rate limit messages
-        console.log(`[RateLimit UPDATE] Successfully applied DB config for /discover: ${config.max} req / ${config.windowMs / 1000}s. Message: "${JSON.stringify(config.message)}"`);
-      } else {
-        console.log(`[RateLimit UPDATE] DB setting found but 'value' or 'windowMs'/'max' fields are invalid or not numbers. Using defaults.`);
-        console.log(`[RateLimit UPDATE] Default config being used: ${config.max} req / ${config.windowMs / 1000}s. Message: "${JSON.stringify(config.message)}"`);
-      }
-    } else {
-      console.log(`[RateLimit UPDATE] No DB config found for key '${DISCOVER_RATE_LIMIT_KEY}'. Using defaults.`);
-      console.log(`[RateLimit UPDATE] Default config being used: ${config.max} req / ${config.windowMs / 1000}s. Message: "${JSON.stringify(config.message)}"`);
-    }
-  } catch (error) {
-    console.error('[RateLimit UPDATE] Error fetching discover rate limit settings from DB, using defaults:', error);
-    console.log(`[RateLimit UPDATE] Default config due to error: ${config.max} req / ${config.windowMs / 1000}s. Message: "${JSON.stringify(config.message)}"`);
+limiter({
+  path: '/discover', // Apply specifically to the /discover path on this router
+  method: 'get',
+  lookup: ['user._id', 'ip'], // Look up by user ID first, then IP
+  total: 10, // Max 10 requests
+  expire: 1000 * 10, // 10 seconds
+  onRateLimited: function (req: Request, res: Response, next: NextFunction) {
+    const authReq = req as AuthRequest;
+    const key = authReq.user?._id?.toString() || authReq.ip;
+    console.log(`[EXPRESS-LIMITER] Rate limit exceeded for /discover. Key: ${key}. UserID: ${authReq.user?._id}, IP: ${authReq.ip}`);
+    res.status(429).json({ success: false, message: 'Too many discovery requests, please try again after 10 seconds.' });
   }
-
-  discoverLimiterInstance = rateLimit({
-    windowMs: config.windowMs,
-    max: config.max,
-    // The 'message' option is used by the default handler. Our custom handler below will use optionsUsed.message.
-    // It's good to keep config.message populated correctly for consistency or if standardHeaders: 'draft-7' (which sends a Retry-After header with a message) is used.
-    message: config.message, 
-    keyGenerator: (req: Request) => {
-      const authReq = req as AuthRequest;
-      return authReq.user?._id?.toString() || req.ip;
-    },
-    handler: (req: Request, res: Response, next: NextFunction, optionsUsed: any) => {
-      const authReq = req as AuthRequest; // Cast to access user
-      const key = authReq.user?._id?.toString() || authReq.ip;
-      // Construct the message payload. Ensure it's an object.
-      let messagePayload = optionsUsed.message;
-      if (typeof messagePayload === 'string') {
-        messagePayload = { success: false, message: messagePayload };
-      } else if (typeof messagePayload !== 'object' || messagePayload === null) {
-        messagePayload = { success: false, message: 'Too many requests, please try again later.' }; // Fallback
-      }
-      // Ensure 'success: false' for rate limit responses
-      messagePayload.success = false;
-
-      console.log(`[RATE LIMIT EXCEEDED HANDLER] For /discover. Key: ${key}. UserID: ${authReq.user?._id}, IP: ${authReq.ip}. Max: ${optionsUsed.max}. WindowMs: ${optionsUsed.windowMs}.`);
-      res.status(optionsUsed.statusCode || 429).json(messagePayload);
-    },
-    standardHeaders: true, // Send X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset headers
-    legacyHeaders: false, // Do not send X-RateLimit-* (old) headers
-  });
-}
-
-// Initial load of the limiter configuration
-console.log('[userProfile-ts.ts] Attempting initial call to updateDiscoverLimiter()...'); // LOG BEFORE CALL
-updateDiscoverLimiter().then(() => {
-  console.log('[userProfile-ts.ts] Initial updateDiscoverLimiter() call completed (or promise resolved).');
-}).catch(error => {
-  console.error("[userProfile-ts.ts] CRITICAL ERROR during initial updateDiscoverLimiter() call:", error);
-  // discoverLimiterInstance is already initialized with defaults above, so it's a safe fallback.
 });
 
-router.get('/discover', protect, (req: Request, res: Response, next: NextFunction) => { 
-  const authReq = req as AuthRequest; 
-  const key = authReq.user?._id?.toString() || authReq.ip;
-  const requestTimestamp = new Date().toISOString();
-  console.log(`[${requestTimestamp}] [RATE LIMITER PRE-INVOKE] For /discover. Key: ${key}. UserID: ${authReq.user?._id}, IP: ${authReq.ip}`);
-  
-  if (discoverLimiterInstance) {
-    discoverLimiterInstance(req, res, (err?: any) => { // Added err parameter to next callback
-      const afterTimestamp = new Date().toISOString();
-      if (err) {
-        // This 'err' would typically be if the rate limiter itself had an operational error,
-        // not necessarily a rate limit exceeded error (which sends a 429 response directly).
-        console.error(`[${afterTimestamp}] [RATE LIMITER ERROR] Error from discoverLimiterInstance:`, err);
-        return next(err); // Pass on the error
-      }
-      // Check if response was already sent (e.g., 429 by the limiter)
-      if (!res.headersSent) {
-        console.log(`[${afterTimestamp}] [RATE LIMITER POST-INVOKE] Passed for /discover. Key: ${key}. Proceeding to main handler.`);
-        next();
-      } else {
-        console.log(`[${afterTimestamp}] [RATE LIMITER POST-INVOKE] Response already sent for /discover (likely 429). Key: ${key}. Status: ${res.statusCode}`);
-      }
-    });
-  } else {
-    console.error(`[${new Date().toISOString()}] [RATE LIMITER CRITICAL] discoverLimiterInstance is undefined! Bypassing rate limit.`);
-    next(); 
-  }
-}, async (req: AuthRequest, res: Response) => {
+// The main route handler
+router.get('/discover', protect, async (req: AuthRequest, res: Response) => {
   try {
-    console.log(`[${new Date().toISOString()}] [DISCOVER HANDLER] Entered main handler for /discover. UserID: ${req.user?._id}`);
+    // Logging for when the actual handler is entered
+    const authReq = req as AuthRequest;
+    const key = authReq.user?._id?.toString() || authReq.ip;
+    console.log(`[DISCOVER HANDLER] Entered main handler for /discover. Key: ${key}. UserID: ${authReq.user?._id}, IP: ${authReq.ip}`);
+    
     // The protect middleware should have already populated req.user
     if (!req.user || !req.user._id) {
       return res.status(401).json({
