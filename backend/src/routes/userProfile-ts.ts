@@ -293,7 +293,17 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
   }
 }, async (req: AuthRequest, res: Response) => {
   try {
-    console.log(`[${new Date().toISOString()}] [DISCOVER HANDLER] Entered main handler for /discover. UserID: ${req.user?._id}`);
+    const page = parseInt(req.query.page as string) || 1;
+    // Use the 'limit' from query param, default to 5 if not provided or invalid.
+    // This 'limit' is for how many profiles to RETURN, not the rate limit 'max' calls.
+    let queryLimit = parseInt(req.query.limit as string);
+    if (isNaN(queryLimit) || queryLimit <= 0) {
+      queryLimit = 5; // Default number of profiles to return per call
+    }
+    const skip = (page - 1) * queryLimit;
+
+    console.log(`[${new Date().toISOString()}] [DISCOVER HANDLER] Entered main handler for /discover. UserID: ${req.user?._id}. Page: ${page}, Return Limit: ${queryLimit}`);
+    
     if (!req.user || !req.user._id) {
       return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
     }
@@ -361,6 +371,8 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
           $ne: currentUser._id
       };
     }
+    
+    const totalMatchingProfiles = await User.countDocuments(query);
 
     console.log(`[DISCOVER PROFILES] User ID: ${currentUser._id}`);
     console.log(`[DISCOVER PROFILES] User Preferences: Age ${currentUser.preferences?.ageRange?.min}-${currentUser.preferences?.ageRange?.max}, Dist: ${currentUser.preferences?.distance}km`);
@@ -370,9 +382,10 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
 
     const potentialMatches = await User.find(query)
       .select('_id name dateOfBirth gender photos bio location interests occupation education')
-      .limit(5); // Corrected to 5 as per user's primary requirement
+      .skip(skip) // Apply skip for pagination
+      .limit(queryLimit); // Apply limit for profiles returned per call
     
-    console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} potential matches from DB (query was limited to 5).`);
+    console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} potential matches from DB (page: ${page}, limit: ${queryLimit}, total matching before limit: ${totalMatchingProfiles}).`);
 
     const formattedUsers = potentialMatches.map(u => {
       let age;
@@ -391,7 +404,17 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
         interests: u.interests, occupation: u.occupation, education: u.education,
       };
     });
-    return res.json({ success: true, profiles: formattedUsers });
+    return res.json({ 
+      success: true, 
+      profiles: formattedUsers,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalMatchingProfiles / queryLimit),
+        totalProfiles: totalMatchingProfiles,
+        limit: queryLimit
+      }
+    });
+    
   } catch (error: unknown) {
     console.error('Discover profiles error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';

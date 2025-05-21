@@ -67,13 +67,15 @@ export default function HomeScreen() {
   const [fetchAttempted, setFetchAttempted] = useState<boolean>(false);
 
   // fetchProfiles that makes the actual API call
-  const fetchProfiles = async () => {
+  const fetchProfiles = async (isRefetch = false) => { // Added isRefetch parameter
+    if (loading && !isRefetch) { // Prevent new fetch if already loading, unless it's a specific refetch
+      console.log('fetchProfiles: Already loading, skipping new fetch.');
+      return;
+    }
     try {
-      console.log('fetchProfiles called - Fetching profiles from backend');
+      console.log(`fetchProfiles called (isRefetch: ${isRefetch}) - Fetching profiles from backend`);
       setLoading(true);
-
-      // Update status to make only one API request
-      setFetchAttempted(true);
+      // setFetchAttempted(true); // We'll manage refetch differently
 
       // API request limit (max 5 seconds)
       const timeoutPromise = new Promise<void>((_, reject) => {
@@ -127,12 +129,25 @@ export default function HomeScreen() {
 
         // Add shuffle operation
         const shuffledProfiles = [...formattedProfiles].sort(() => Math.random() - 0.5);
+        // If it's a refetch (e.g. deck empty), we replace the profiles.
+        // If it was an initial load or a different kind of load, one might append.
+        // For simplicity now, always replace.
         setProfiles(shuffledProfiles);
         console.log(`${shuffledProfiles.length} profiles successfully loaded from API and shuffled`);
       } else {
-        // If no profiles return from API, use empty array
-        console.log('No profiles found from API');
-        setProfiles([]);
+        if (response.success && response.profiles?.length === 0) {
+          console.log('No new profiles found from API.');
+          // Don't clear existing profiles if it was a refetch that found nothing new
+          // but do clear if it's an initial load that found nothing.
+          if (!isRefetch || profiles.length === 0) { // Clear if initial load or if deck was already empty
+            setProfiles([]);
+          }
+        } else if (!response.success) {
+          console.log('API call to fetch profiles was not successful:', response.message || 'Unknown error');
+          if (!isRefetch || profiles.length === 0) {
+             setProfiles([]); // Clear on error for initial load
+          }
+        }
       }
     } catch (error) {
       console.log('API error:', error);
@@ -243,13 +258,12 @@ export default function HomeScreen() {
   };
 
   const handleDeckEmpty = () => {
-    // Only make API call on first attempt, don't retry if already attempted
-    if (!fetchAttempted) {
-      console.log('Deck empty, fetching new profiles from API... (first attempt)');
-      fetchProfiles();
+    console.log('handleDeckEmpty called.');
+    if (!loading) { // Only fetch if not already loading
+      console.log('Deck empty and not currently loading, fetching new profiles...');
+      fetchProfiles(true); // Pass true to indicate it's a refetch due to empty deck
     } else {
-      console.log('Deck empty, but API attempt already made. Will not retry.');
-      // Do nothing - break the loop
+      console.log('Deck empty, but already loading. Will not trigger another fetch.');
     }
   };
 
