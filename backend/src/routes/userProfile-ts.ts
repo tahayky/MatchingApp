@@ -1,6 +1,7 @@
 console.log('[userProfile-ts.ts] Module loading...');
 import express, { Request, Response, Router, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
+import MongoStore from 'rate-limit-mongo'; // Import MongoStore
 import AppSetting from '../models/AppSetting';
 import mongoose from 'mongoose';
 import multer from 'multer';
@@ -166,16 +167,13 @@ router.put('/photos/:photoId/main', protect, async (req: AuthRequest, res: Respo
 
 // --- Discover Profiles Route with express-rate-limit ---
 const DEFAULT_DISCOVER_RATE_LIMIT_CONFIG = {
-  windowMs: 10 * 1000, // 10 seconds
-  max: 5,
-  message: 'Too many discovery requests, please try again after 10 seconds.', // Simple string message
+  windowMs: 10 * 1000, 
+  max: 5, 
+  message: 'Too many discovery requests, please try again after 10 seconds.',
 };
 const DISCOVER_RATE_LIMIT_KEY = 'discoverRateLimit';
 
-let discoverLimiterInstance: ReturnType<typeof rateLimit> = rateLimit({ 
-  windowMs: DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs, 
-  max: DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.max 
-}); 
+let discoverLimiterInstance: ReturnType<typeof rateLimit>; 
 
 export async function updateDiscoverLimiter() {
   let currentWindowMs = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs;
@@ -215,25 +213,43 @@ export async function updateDiscoverLimiter() {
     console.log(`[RateLimit UPDATE] Default config due to error: ${currentMax} req / ${currentWindowMs / 1000}s. Message string: "${currentMessageString}"`);
   }
 
+  const mongoUri = process.env.MONGODB_URI;
+  let store;
+
+  if (mongoUri) {
+    console.log(`[RateLimit Instantiation] Using MongoStore for rate limiting. Collection: apiRateLimits_discover_v2`);
+    store = new MongoStore({
+      uri: mongoUri,
+      collectionName: 'apiRateLimits_discover_v2', 
+      expireTimeMs: currentWindowMs, 
+      errorHandler: (err: any) => { 
+        console.error('[MongoStore ERROR] Error in rate-limit-mongo store:', err);
+      }
+    });
+  } else {
+    console.warn('[RateLimit Instantiation] MONGODB_URI not defined. Falling back to MemoryStore for rate limiting. This is not recommended for production.');
+  }
+  
   console.log(`[RateLimit Instantiation] Creating new rateLimit instance with: max=${currentMax}, windowMs=${currentWindowMs}`);
   discoverLimiterInstance = rateLimit({
+    store: store, // Use MongoStore if mongoUri is available, otherwise undefined (defaults to MemoryStore)
     windowMs: currentWindowMs,
     max: currentMax,
-    message: currentMessageString, 
+    message: { success: false, message: currentMessageString }, 
     keyGenerator: (req: Request) => {
       const authReq = req as AuthRequest;
-      const key = authReq.user?._id?.toString() || authReq.ip;
+      const key = authReq.user?._id?.toString() || req.ip;
       return key;
     },
     handler: (req: Request, res: Response, next: NextFunction, optionsUsed: any) => {
       const authReq = req as AuthRequest; 
       const key = authReq.user?._id?.toString() || authReq.ip;
-      const responseMessage = (typeof optionsUsed.message === 'string' && optionsUsed.message) 
-                              ? optionsUsed.message 
-                              : 'Too many requests, please try again later.'; 
+      const messagePayload = (typeof optionsUsed.message === 'object' && optionsUsed.message !== null)
+                             ? optionsUsed.message
+                             : { success: false, message: 'Too many requests, please try again later.' }; 
 
       console.log(`[RATE LIMIT EXCEEDED HANDLER] For /discover. Key: ${key}. UserID: ${authReq.user?._id}, IP: ${authReq.ip}. Max: ${optionsUsed.max}. WindowMs: ${optionsUsed.windowMs}.`);
-      res.status(optionsUsed.statusCode || 429).json({ success: false, message: responseMessage });
+      res.status(optionsUsed.statusCode || 429).json(messagePayload);
     },
     standardHeaders: true, 
     legacyHeaders: false, 

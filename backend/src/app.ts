@@ -28,6 +28,12 @@ dotenv.config();
 // Create Express application
 const app: Application = express();
 
+// If running behind a reverse proxy (e.g., on Render, Heroku, Nginx),
+// set 'trust proxy' to ensure req.ip is the client's IP address
+// and not the proxy's IP. This is important for rate limiting by IP.
+// The value '1' means it trusts the first hop.
+app.set('trust proxy', 1);
+
 // Very first middleware to log incoming request origin
 app.use((req, res, next) => {
   console.log(`[REQUEST LOGGER] Method: ${req.method}, URL: ${req.originalUrl}, Origin: ${req.headers.origin}`);
