@@ -53,18 +53,11 @@ const upload = multer({
 
 const router: Router = express.Router();
 
-// Profile Create/Update, GetMe, Photo Upload, SetMainPhoto routes (assuming these are unchanged and correct)
-// ... (These routes were lengthy, assuming they are still here and functional from previous versions) ...
-// For brevity, I'm omitting the full code for these routes but they should be present.
-// Make sure they are using `protect` middleware as appropriate.
-
+// Profile Create/Update Route
 router.post('/', protect, async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user || !req.user._id) {
-      return res.status(401).json({
-        success: false,
-        message: 'Not authorized, user not found'
-      });
+      return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
     }
     const { bio, coordinates, city, country, interests, occupation, education, height, ageRangeMin, ageRangeMax, maxDistance } = req.body;
     const userToUpdate = await User.findById(req.user._id);
@@ -99,12 +92,13 @@ router.post('/', protect, async (req: AuthRequest, res: Response) => {
     await userToUpdate.save();
     res.json({ success: true, user: userToUpdate });
   } catch (error: unknown) {
-    console.error('Profile error:', error);
+    console.error('Profile update error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    res.status(500).json({ success: false, message: 'Server error', error: errorMessage });
+    res.status(500).json({ success: false, message: 'Server error during profile update', error: errorMessage });
   }
 });
 
+// Get My Profile Route
 router.get('/me', protect, async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user || !req.user._id) { return res.status(401).json({ success: false, message: 'Not authorized, user not found'}); }
@@ -112,12 +106,13 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
     if (!userProfile) { return res.status(404).json({ success: false, message: 'User profile not found. Please complete your profile.'});}
     res.json({ success: true, user: userProfile });
   } catch (error: unknown) {
-    console.error('Get profile error:', error);
+    console.error('Get my profile error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    res.status(500).json({ success: false, message: 'Server error', error: errorMessage });
+    res.status(500).json({ success: false, message: 'Server error fetching profile', error: errorMessage });
   }
 });
 
+// Upload Profile Photo Route
 router.post('/photos', protect, upload.single('photo'), async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user || !req.user._id) { return res.status(401).json({ success: false, message: 'Not authorized, user not found' });}
@@ -137,10 +132,11 @@ router.post('/photos', protect, upload.single('photo'), async (req: AuthRequest,
     console.error('Upload photo error:', error);
     if (req.file?.path) fs.unlink(req.file.path, (err) => { if (err) console.error("Error deleting file after DB error:", err); });
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    res.status(500).json({ success: false, message: 'Server error', error: errorMessage });
+    res.status(500).json({ success: false, message: 'Server error uploading photo', error: errorMessage });
   }
 });
 
+// Set Main Photo Route
 router.put('/photos/:photoId/main', protect, async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user || !req.user._id) { return res.status(401).json({ success: false, message: 'Not authorized, user not found' });}
@@ -164,27 +160,24 @@ router.put('/photos/:photoId/main', protect, async (req: AuthRequest, res: Respo
   } catch (error: unknown) {
     console.error('Set main photo error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    res.status(500).json({ success: false, message: 'Server error', error: errorMessage });
+    res.status(500).json({ success: false, message: 'Server error setting main photo', error: errorMessage });
   }
 });
-
 
 // --- Discover Profiles Route with express-rate-limit ---
 const DEFAULT_DISCOVER_RATE_LIMIT_CONFIG = {
   windowMs: 10 * 1000, // 10 seconds
-  max: 5, // Default max requests
-  message: { 
-    success: false,
-    message: 'Too many discovery requests, please try again after 10 seconds.',
-  },
+  max: 5, 
+  message: 'Too many discovery requests, please try again after 10 seconds.', // Simple string message
 };
 const DISCOVER_RATE_LIMIT_KEY = 'discoverRateLimit';
 
-let discoverLimiterInstance: ReturnType<typeof rateLimit> = rateLimit(DEFAULT_DISCOVER_RATE_LIMIT_CONFIG);
+let discoverLimiterInstance: ReturnType<typeof rateLimit> = rateLimit(DEFAULT_DISCOVER_RATE_LIMIT_CONFIG); 
 
 export async function updateDiscoverLimiter() {
-  let config = { ...DEFAULT_DISCOVER_RATE_LIMIT_CONFIG };
-  config.message = { ...DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message }; 
+  let currentWindowMs = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs;
+  let currentMax = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.max;
+  let currentMessageString = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
 
   try {
     console.log(`[RateLimit UPDATE] Attempting to find AppSetting with key: ${DISCOVER_RATE_LIMIT_KEY}`);
@@ -192,57 +185,50 @@ export async function updateDiscoverLimiter() {
     if (dbSetting) {
       console.log(`[RateLimit UPDATE] Found DB setting. Value:`, JSON.stringify(dbSetting.value, null, 2));
       if (dbSetting.value && typeof dbSetting.value.windowMs === 'number' && typeof dbSetting.value.max === 'number') {
-        config.windowMs = dbSetting.value.windowMs;
-        config.max = dbSetting.value.max;
-        if (typeof config.message !== 'object' || config.message === null) {
-            config.message = { success: false, message: '' };
-        }
+        currentWindowMs = dbSetting.value.windowMs;
+        currentMax = dbSetting.value.max;
         if (dbSetting.value.message && typeof dbSetting.value.message === 'string') {
-          (config.message as { success: boolean; message: string }).message = dbSetting.value.message;
-        } else if (dbSetting.value.message && typeof dbSetting.value.message === 'object') {
-            config.message = dbSetting.value.message;
+          currentMessageString = dbSetting.value.message;
+        } else if (dbSetting.value.message && typeof dbSetting.value.message === 'object' && typeof dbSetting.value.message.message === 'string') {
+          currentMessageString = dbSetting.value.message.message; // Extract string if DB stores object
         } else {
-          console.log(`[RateLimit UPDATE] DB setting for message is missing or not a compatible string/object, using default message: "${DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message.message}"`);
-          (config.message as { success: boolean; message: string }).message = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message.message;
+          console.log(`[RateLimit UPDATE] DB setting for message is missing or not a string, using default message string.`);
         }
-        (config.message as { success: boolean; message: string }).success = false;
-        console.log(`[RateLimit UPDATE] Successfully applied DB config for /discover: ${config.max} req / ${config.windowMs / 1000}s. Message: "${JSON.stringify(config.message)}"`);
+        console.log(`[RateLimit UPDATE] Successfully applied DB config for /discover: ${currentMax} req / ${currentWindowMs / 1000}s. Message string: "${currentMessageString}"`);
       } else {
         console.log(`[RateLimit UPDATE] DB setting found but 'value' or 'windowMs'/'max' fields are invalid or not numbers. Using defaults.`);
-        console.log(`[RateLimit UPDATE] Default config being used: ${config.max} req / ${config.windowMs / 1000}s. Message: "${JSON.stringify(config.message)}"`);
+        console.log(`[RateLimit UPDATE] Default config being used: ${currentMax} req / ${currentWindowMs / 1000}s. Message string: "${currentMessageString}"`);
       }
     } else {
       console.log(`[RateLimit UPDATE] No DB config found for key '${DISCOVER_RATE_LIMIT_KEY}'. Using defaults.`);
-      console.log(`[RateLimit UPDATE] Default config being used: ${config.max} req / ${config.windowMs / 1000}s. Message: "${JSON.stringify(config.message)}"`);
+      console.log(`[RateLimit UPDATE] Default config being used: ${currentMax} req / ${currentWindowMs / 1000}s. Message string: "${currentMessageString}"`);
     }
   } catch (error) {
     console.error('[RateLimit UPDATE] Error fetching discover rate limit settings from DB, using defaults:', error);
-    console.log(`[RateLimit UPDATE] Default config due to error: ${config.max} req / ${config.windowMs / 1000}s. Message: "${JSON.stringify(config.message)}"`);
+    console.log(`[RateLimit UPDATE] Default config due to error: ${currentMax} req / ${currentWindowMs / 1000}s. Message string: "${currentMessageString}"`);
   }
 
   discoverLimiterInstance = rateLimit({
-    windowMs: config.windowMs,
-    max: config.max,
-    message: config.message, 
+    windowMs: currentWindowMs,
+    max: currentMax,
+    message: { success: false, message: currentMessageString }, // Pass as object for JSON response
     keyGenerator: (req: Request) => {
       const authReq = req as AuthRequest;
       return authReq.user?._id?.toString() || req.ip;
     },
     handler: (req: Request, res: Response, next: NextFunction, optionsUsed: any) => {
-      const authReq = req as AuthRequest;
+      const authReq = req as AuthRequest; 
       const key = authReq.user?._id?.toString() || authReq.ip;
-      let messagePayload = optionsUsed.message;
-      if (typeof messagePayload === 'string') {
-        messagePayload = { success: false, message: messagePayload };
-      } else if (typeof messagePayload !== 'object' || messagePayload === null) {
-        messagePayload = { success: false, message: 'Too many requests, please try again later.' };
-      }
-      messagePayload.success = false;
+      // optionsUsed.message should be the object { success: false, message: currentMessageString }
+      const messagePayload = (typeof optionsUsed.message === 'object' && optionsUsed.message !== null)
+                             ? optionsUsed.message
+                             : { success: false, message: 'Too many requests, please try again later.' }; // Fallback
+
       console.log(`[RATE LIMIT EXCEEDED HANDLER] For /discover. Key: ${key}. UserID: ${authReq.user?._id}, IP: ${authReq.ip}. Max: ${optionsUsed.max}. WindowMs: ${optionsUsed.windowMs}.`);
       res.status(optionsUsed.statusCode || 429).json(messagePayload);
     },
-    standardHeaders: true,
-    legacyHeaders: false,
+    standardHeaders: true, 
+    legacyHeaders: false, 
   });
 }
 
