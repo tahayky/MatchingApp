@@ -7,7 +7,7 @@ import SubscriptionPlan, { ISubscriptionPlan } from '../models/SubscriptionPlan'
 import AppSetting, { IAppSetting } from '../models/AppSetting'; // Import AppSetting model
 import Match from '../models/Match'; // Import Match model
 import { isAdminAuthenticated } from '../middleware/adminAuth'; // Import the new middleware
-import { updateDiscoverLimiter } from './userProfile-ts'; // Import the updater function
+// import { updateDiscoverLimiter } from './userProfile-ts'; // Removed as updateDiscoverLimiter was removed
 
 // Load environment variables
 dotenv.config();
@@ -536,13 +536,15 @@ router.put('/settings/discover-rate-limit', isAdminAuthenticated, async (req: Re
 // @route   POST /api/admin/settings/refresh-discover-rate-limit
 // @desc    Refreshes the discover rate limiter configuration from the database
 // @access  Private (Admin)
+// This route is now non-functional as updateDiscoverLimiter was tied to the old express-rate-limit implementation
 router.post('/settings/refresh-discover-rate-limit', isAdminAuthenticated, async (req: Request, res: Response) => {
   try {
-    await updateDiscoverLimiter();
-    res.json({ success: true, message: 'Discover rate limiter configuration has been refreshed.' });
+    // await updateDiscoverLimiter(); // updateDiscoverLimiter is removed
+    console.warn('[ADMIN REFRESH-RATE-LIMIT] This endpoint is currently non-functional as rate limiting was switched to express-limiter with hardcoded values.');
+    res.status(501).json({ success: false, message: 'Rate limiter refresh mechanism needs to be re-implemented for the current limiter.' });
   } catch (error: unknown) {
-    console.error('Error refreshing discover rate limiter:', error);
-    const message = error instanceof Error ? error.message : 'An unexpected error occurred while refreshing.';
+    console.error('Error attempting to refresh discover rate limiter (endpoint non-functional):', error);
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
     res.status(500).json({ success: false, message });
   }
 });
