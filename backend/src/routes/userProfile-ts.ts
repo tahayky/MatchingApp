@@ -167,12 +167,15 @@ router.put('/photos/:photoId/main', protect, async (req: AuthRequest, res: Respo
 // --- Discover Profiles Route with express-rate-limit ---
 const DEFAULT_DISCOVER_RATE_LIMIT_CONFIG = {
   windowMs: 10 * 1000, // 10 seconds
-  max: 5, 
+  max: 5,
   message: 'Too many discovery requests, please try again after 10 seconds.', // Simple string message
 };
 const DISCOVER_RATE_LIMIT_KEY = 'discoverRateLimit';
 
-let discoverLimiterInstance: ReturnType<typeof rateLimit> = rateLimit(DEFAULT_DISCOVER_RATE_LIMIT_CONFIG); 
+let discoverLimiterInstance: ReturnType<typeof rateLimit> = rateLimit({ 
+  windowMs: DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs, 
+  max: DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.max 
+}); 
 
 export async function updateDiscoverLimiter() {
   let currentWindowMs = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs;
@@ -190,54 +193,63 @@ export async function updateDiscoverLimiter() {
         if (dbSetting.value.message && typeof dbSetting.value.message === 'string') {
           currentMessageString = dbSetting.value.message;
         } else if (dbSetting.value.message && typeof dbSetting.value.message === 'object' && typeof dbSetting.value.message.message === 'string') {
-          currentMessageString = dbSetting.value.message.message; // Extract string if DB stores object
+          currentMessageString = dbSetting.value.message.message;
         } else {
-          console.log(`[RateLimit UPDATE] DB setting for message is missing or not a string, using default message string.`);
+          console.log(`[RateLimit UPDATE] DB setting for message is missing or not a string, using default message string: "${DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message}"`);
+          currentMessageString = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
         }
         console.log(`[RateLimit UPDATE] Successfully applied DB config for /discover: ${currentMax} req / ${currentWindowMs / 1000}s. Message string: "${currentMessageString}"`);
       } else {
         console.log(`[RateLimit UPDATE] DB setting found but 'value' or 'windowMs'/'max' fields are invalid or not numbers. Using defaults.`);
+        currentMessageString = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
         console.log(`[RateLimit UPDATE] Default config being used: ${currentMax} req / ${currentWindowMs / 1000}s. Message string: "${currentMessageString}"`);
       }
     } else {
       console.log(`[RateLimit UPDATE] No DB config found for key '${DISCOVER_RATE_LIMIT_KEY}'. Using defaults.`);
+      currentMessageString = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
       console.log(`[RateLimit UPDATE] Default config being used: ${currentMax} req / ${currentWindowMs / 1000}s. Message string: "${currentMessageString}"`);
     }
   } catch (error) {
     console.error('[RateLimit UPDATE] Error fetching discover rate limit settings from DB, using defaults:', error);
+    currentMessageString = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
     console.log(`[RateLimit UPDATE] Default config due to error: ${currentMax} req / ${currentWindowMs / 1000}s. Message string: "${currentMessageString}"`);
   }
 
+  console.log(`[RateLimit Instantiation] Creating new rateLimit instance with: max=${currentMax}, windowMs=${currentWindowMs}`);
   discoverLimiterInstance = rateLimit({
     windowMs: currentWindowMs,
     max: currentMax,
-    message: { success: false, message: currentMessageString }, // Pass as object for JSON response
+    message: currentMessageString, 
     keyGenerator: (req: Request) => {
       const authReq = req as AuthRequest;
-      return authReq.user?._id?.toString() || req.ip;
+      const key = authReq.user?._id?.toString() || authReq.ip;
+      return key;
     },
     handler: (req: Request, res: Response, next: NextFunction, optionsUsed: any) => {
       const authReq = req as AuthRequest; 
       const key = authReq.user?._id?.toString() || authReq.ip;
-      // optionsUsed.message should be the object { success: false, message: currentMessageString }
-      const messagePayload = (typeof optionsUsed.message === 'object' && optionsUsed.message !== null)
-                             ? optionsUsed.message
-                             : { success: false, message: 'Too many requests, please try again later.' }; // Fallback
+      const responseMessage = (typeof optionsUsed.message === 'string' && optionsUsed.message) 
+                              ? optionsUsed.message 
+                              : 'Too many requests, please try again later.'; 
 
       console.log(`[RATE LIMIT EXCEEDED HANDLER] For /discover. Key: ${key}. UserID: ${authReq.user?._id}, IP: ${authReq.ip}. Max: ${optionsUsed.max}. WindowMs: ${optionsUsed.windowMs}.`);
-      res.status(optionsUsed.statusCode || 429).json(messagePayload);
+      res.status(optionsUsed.statusCode || 429).json({ success: false, message: responseMessage });
     },
     standardHeaders: true, 
     legacyHeaders: false, 
   });
 }
 
-console.log('[userProfile-ts.ts] Attempting initial call to updateDiscoverLimiter()...');
-updateDiscoverLimiter().then(() => {
-  console.log('[userProfile-ts.ts] Initial updateDiscoverLimiter() call completed (or promise resolved).');
-}).catch(error => {
-  console.error("[userProfile-ts.ts] CRITICAL ERROR during initial updateDiscoverLimiter() call:", error);
-});
+console.log('[userProfile-ts.ts] Setting up initial call to updateDiscoverLimiter()...');
+(async () => {
+  try {
+    console.log('[userProfile-ts.ts] EXECUTING initial call to updateDiscoverLimiter()...');
+    await updateDiscoverLimiter();
+    console.log('[userProfile-ts.ts] Initial updateDiscoverLimiter() call successfully completed.');
+  } catch (error) {
+    console.error("[userProfile-ts.ts] CRITICAL ERROR during initial execution of updateDiscoverLimiter():", error);
+  }
+})();
 
 router.get('/discover', protect, (req: Request, res: Response, next: NextFunction) => { 
   const authReq = req as AuthRequest; 
@@ -342,7 +354,7 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
 
     const potentialMatches = await User.find(query)
       .select('_id name dateOfBirth gender photos bio location interests occupation education')
-      .limit(20); // Reverted from 10 back to 20
+      .limit(20);
     
     console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} potential matches from DB.`);
 
