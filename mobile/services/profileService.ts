@@ -15,8 +15,8 @@ export interface ProfileData {
   ageRangeMin?: number;
   ageRangeMax?: number;
   maxDistance?: number;
-  gender?: 'male' | 'female' | 'other'; // Added gender field
-  interestedIn?: ('male' | 'female' | 'other')[]; // Added interestedIn field
+  gender?: 'male' | 'female' | 'other'; 
+  interestedIn?: ('male' | 'female' | 'other')[]; 
 }
 
 // Helper function to check if logged in
@@ -32,7 +32,7 @@ const isAuthenticated = async (): Promise<boolean> => {
 
 export interface ProfileResponse {
   success: boolean;
-  message?: string; // Opsiyonel mesaj alanı eklendi
+  message?: string; 
   profile: {
     _id: string;
     user: string;
@@ -51,8 +51,8 @@ export interface ProfileResponse {
     occupation?: string;
     education?: string;
     height?: number;
-    gender?: 'male' | 'female' | 'other'; // Added gender field
-    interestedIn?: ('male' | 'female' | 'other')[]; // Added interestedIn field
+    gender?: 'male' | 'female' | 'other'; 
+    interestedIn?: ('male' | 'female' | 'other')[]; 
     preferences?: {
       ageRange?: {
         min: number;
@@ -63,20 +63,22 @@ export interface ProfileResponse {
     lastActive: string;
     createdAt: string;
     updatedAt: string;
-  };
+  } | null; // Allow profile to be null for consistency on auth failure
 }
 
 export interface DiscoverProfilesResponse {
   success: boolean;
-  message?: string; // Opsiyonel mesaj alanı eklendi
+  message?: string; 
   profiles: Array<{
     _id: string;
-    user: {
+    user: { // This structure might be simplified if backend sends full user object directly
       _id: string;
       name: string;
-      dateOfBirth: string;
+      dateOfBirth: string; 
       gender: string;
     };
+    name: string; // Added name directly for easier access, assuming backend sends it
+    age?: number; 
     photos: Array<{
       _id: string;
       url: string;
@@ -91,103 +93,90 @@ export interface DiscoverProfilesResponse {
     occupation?: string;
     education?: string;
   }>;
+  pagination?: { 
+    currentPage: number;
+    totalPages: number;
+    totalProfiles: number;
+    limit: number;
+  };
 }
 
 const profileService = {
   async createOrUpdateProfile(profileData: ProfileData): Promise<ProfileResponse> {
-    // Authentication check
     if (!(await isAuthenticated())) {
-      // Return a structure that matches ProfileResponse for consistency, even on auth failure
-      return { success: false, message: 'User not authenticated', profile: null as any };
+      return { success: false, message: 'User not authenticated', profile: null };
     }
 
-    // Format interests if it's an array
     if (Array.isArray(profileData.interests)) {
       profileData.interests = profileData.interests.join(',');
     }
 
     try {
-      // Check internet connection first
       const isConnected = await checkInternetConnection();
       if (!isConnected) {
         throw new Error('No internet connection');
       }
-
-      // Use the new endpoint: /api/users/profile
       const response = await apiClient.post<ProfileResponse>('/users/profile', profileData);
       return response.data;
     } catch (error) {
       console.error('Error creating/updating profile:', error);
-      throw error; // Re-throw error to be caught by the component
+      throw error; 
     }
   },
 
   async getMyProfile(): Promise<ProfileResponse> {
-    // Authentication check
     if (!(await isAuthenticated())) {
-      return { success: false, message: 'User not authenticated', profile: null as any };
+      return { success: false, message: 'User not authenticated', profile: null };
     }
 
     try {
-      // Check internet connection first
       const isConnected = await checkInternetConnection();
       if (!isConnected) {
         throw new Error('No internet connection');
       }
-
-      // Use the new endpoint: /api/users/profile/me
       const response = await apiClient.get<ProfileResponse>('/users/profile/me');
       return response.data;
     } catch (error: any) {
-      // 404 error is normal - means profile hasn't been created yet
       if (error.response?.status === 404) {
         return {
           success: false,
-          profile: null as any,
-          message: 'Profile not yet created' // English message
+          profile: null,
+          message: 'Profile not yet created'
         };
       }
-
-      // Handle other errors silently for now, or decide on specific error responses
-      console.log('Error fetching profile (silent)');
-      return { success: false, message: 'Error fetching profile', profile: null as any };
+      console.log('Error fetching profile:', error.message);
+      return { success: false, message: 'Error fetching profile', profile: null };
     }
   },
 
   async uploadProfilePhoto(photoFile: FormData): Promise<{ success: boolean; photo: { url: string; isMain: boolean }, photos?: any[] }> {
-    // Authentication check
     if (!(await isAuthenticated())) {
-      return { success: false, photo: { url: '', isMain: false } };
+      return { success: false, message: 'Not authenticated', photo: { url: '', isMain: false } } as any;
     }
 
     try {
-      // Check internet connection first
       const isConnected = await checkInternetConnection();
       if (!isConnected) {
         throw new Error('No internet connection');
       }
-
-      // Use the new endpoint: /api/users/profile/photos
       const response = await apiClient.post('/users/profile/photos', photoFile, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
-      return response.data; // Assuming backend sends back { success, photo, photos }
+      return response.data; 
     } catch (error) {
       console.error('Error uploading photo:', error);
-      return { success: false, photo: { url: '', isMain: false } };
+      return { success: false, message: 'Error uploading photo', photo: { url: '', isMain: false } } as any;
     }
   },
 
   async setMainPhoto(photoId: string): Promise<{ success: boolean; message: string, photos?: any[] }> {
-    // Authentication check
     if (!(await isAuthenticated())) {
       return { success: false, message: 'Not authenticated' };
     }
 
     try {
-      // Check internet connection first
       const isConnected = await checkInternetConnection();
       if (!isConnected) {
         return {
@@ -195,100 +184,58 @@ const profileService = {
           message: 'No internet connection, cannot set main photo'
         };
       }
-
-      // Use the new endpoint: /api/users/profile/photos/:photoId/main
       const response = await apiClient.put(`/users/profile/photos/${photoId}/main`);
-      return response.data; // Assuming backend sends { success, message, photos }
+      return response.data; 
     } catch (error) {
       console.error('Error setting main photo:', error);
       return { success: false, message: 'Operation failed' };
     }
   },
 
-  async discoverProfiles(): Promise<DiscoverProfilesResponse> {
-    // Authentication check
+  async discoverProfiles(page: number = 1, limit: number = 5): Promise<DiscoverProfilesResponse> {
     if (!(await isAuthenticated())) {
-      return { success: false, profiles: [], message: 'Not authenticated' };
+      return { success: false, profiles: [], message: 'Not authenticated', pagination: undefined };
     }
 
     try {
-      // Check internet connection first
       const isConnected = await checkInternetConnection();
-
       if (!isConnected) {
-        console.log('No internet connection, trying to load profiles from cache...');
-
-        // Get profiles from cache
-        const cachedProfiles = await profileCache.get();
-
-        if (cachedProfiles && cachedProfiles.length > 0) {
-          console.log(`Loaded ${cachedProfiles.length} profiles from cache`);
-          return {
-            success: true,
-            profiles: cachedProfiles
-          };
-        } else {
-          console.log('No profiles found in cache');
-          return {
-            success: false,
-            profiles: [],
-            message: 'No internet connection and no profiles found in cache'
-          };
-        }
-      }
-
-      // If internet connection exists, fetch new profiles from API
-      console.log('Fetching profiles from API...');
-
-      // Use the new endpoint: /api/users/profile/discover
-      const response = await apiClient.get<DiscoverProfilesResponse>('/users/profile/discover');
-
-      // If profiles successfully fetched from API, save to cache
-      if (response.data.success && response.data.profiles.length > 0) {
-        await profileCache.save(response.data.profiles);
-        await profileCache.updateLastFetch();
-        console.log(`Saved ${response.data.profiles.length} profiles to cache`);
-      }
-
-      return response.data;
-    } catch (error: any) {
-      console.log('API error, trying to load profiles from cache...', error);
-
-      // Load from cache in case of API error
-      const cachedProfiles = await profileCache.get();
-
-      if (cachedProfiles && cachedProfiles.length > 0) {
-        console.log(`Loaded ${cachedProfiles.length} profiles from cache after API error`);
-        return {
-          success: true,
-          profiles: cachedProfiles
-        };
-      }
-
-      // 404 error is normal - means profile hasn't been created yet
-      if (error.response?.status === 404) {
+        console.log('No internet connection for discoverProfiles.');
         return {
           success: false,
           profiles: [],
-          message: 'Profile not yet created' // English message
+          message: 'No internet connection. Cannot fetch new profiles.',
+          pagination: undefined
         };
       }
 
-      // Handle other errors silently
-      console.log('Error discovering profiles (silent)');
-      return { success: false, profiles: [], message: 'Error discovering profiles' };
+      console.log(`Fetching profiles from API... Page: ${page}, Limit: ${limit}`);
+      const response = await apiClient.get<DiscoverProfilesResponse>(`/users/profile/discover?page=${page}&limit=${limit}`);
+      
+      // Example: only cache first page for simplicity with pagination
+      if (response.data.success && response.data.profiles.length > 0 && page === 1) { 
+        await profileCache.save(response.data.profiles); 
+        await profileCache.updateLastFetch();
+        console.log(`Saved ${response.data.profiles.length} profiles (first page) to cache`);
+      }
+
+      return response.data; // This should now include the pagination object from backend
+    } catch (error: any) {
+      console.log('Error discovering profiles:', error.message);
+      // If error has a response (e.g. 429 from rate limit), rethrow it so component can see status
+      if (error.response) {
+          console.log('Error response from server:', error.response.data);
+          throw error; 
+      }
+      return { success: false, profiles: [], message: error.message || 'Error discovering profiles', pagination: undefined };
     }
   },
 
-  // New method to get user information for profile editing
-  async getUserInfo(): Promise<any> { // Consider defining a specific UserInfoResponse type
-    // Authentication check
+  async getUserInfo(): Promise<any> { 
     if (!(await isAuthenticated())) {
       return { success: false, user: null, message: 'Not authenticated' };
     }
-
     try {
-      // This endpoint should already be correct if it's fetching the User model directly
       const response = await apiClient.get('/users/me');
       return response.data;
     } catch (error) {
@@ -297,26 +244,21 @@ const profileService = {
     }
   },
 
-  // New method to update user information (gender, interestedIn)
   async updateUserInfo(userData: {
     gender?: 'male' | 'female' | 'other';
     interestedIn?: ('male' | 'female' | 'other')[];
-    // Add other updatable user fields here if necessary, e.g., name, email
     name?: string;
     email?: string;
-  }): Promise<any> { // Consider defining a specific UserUpdateResponse type
-    // Authentication check
+  }): Promise<any> { 
     if (!(await isAuthenticated())) {
       return { success: false, message: 'Not authenticated' };
     }
-
     try {
-      // This endpoint should already be correct
       const response = await apiClient.put('/users/me', userData);
       return response.data;
     } catch (error) {
       console.error('Error updating user info:', error);
-      throw error; // Re-throw to be handled by the component
+      throw error; 
     }
   }
 };

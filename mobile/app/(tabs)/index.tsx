@@ -1,124 +1,112 @@
 import { StyleSheet, Alert, View, ActivityIndicator } from 'react-native';
 import { useState, useCallback, useEffect } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
+// import { useFocusEffect } from '@react-navigation/native'; // Keep commented if not immediately needed
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { CardDeck } from '@/components/CardDeck';
-import { ProfileData } from '@/components/SwipeableCard';
-import { profileService, matchService, authService } from '@/services';
-import { mockProfiles } from '@/utils/mockData';
+import { ProfileData as SwipeableCardProfileData } from '@/components/SwipeableCard'; // Renamed to avoid conflict
+import { profileService, matchService, authService, DiscoverProfilesResponse } from '@/services'; // Added DiscoverProfilesResponse
+import { mockProfiles } from '@/utils/mockData'; // Keep for fallback if desired, or remove
+
+// Define a more specific type for profiles used in this screen, matching SwipeableCard's expectation
+type ScreenProfileData = SwipeableCardProfileData;
 
 export default function HomeScreen() {
-  const [profiles, setProfiles] = useState<ProfileData[]>([]);
-  const [matches, setMatches] = useState<any[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [profiles, setProfiles] = useState<ScreenProfileData[]>([]);
+  const [matches, setMatches] = useState<any[]>([]); // Consider a specific Match type
+  const [loading, setLoading] = useState<boolean>(false); // Initial false, true when fetching
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [allProfilesLoaded, setAllProfilesLoaded] = useState<boolean>(false);
 
-  // Initial auth check - API connection re-enabled
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        // Auth check
-        const authenticated = await authService.isAuthenticated();
-        setIsAuthenticated(authenticated);
+  const fetchInitialData = async () => {
+    console.log('fetchInitialData: Initiating authentication and profile loading');
+    setLoading(true); // Set loading true at the start of initial data fetch
+    try {
+      const authenticated = await authService.isAuthenticated();
+      setIsAuthenticated(authenticated);
 
-        if (authenticated) {
-          // Fetch profiles from API (mock profiles as fallback)
-          console.log('Authenticated, fetching profiles from API...');
-          fetchProfiles();
-          fetchMatches();
-        } else {
-          // If not logged in, directly close loading state
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error("Auth check failed:", error);
-        // Even on error, finish loading and use mock profiles
-        setProfiles(mockProfiles); // Consider removing mock data if API is primary
-        setLoading(false);
+      if (authenticated) {
+        console.log('Authenticated, fetching initial profiles (page 1) and matches...');
+        await fetchProfiles(false, 1); // Fetch page 1 explicitly
+        await fetchMatches(); // Fetch matches after profiles or in parallel
+      } else {
+        console.log('Not authenticated, no data will be fetched.');
+        setProfiles([]); // Clear profiles if not authenticated
+        setMatches([]);
       }
-    };
+    } catch (error) {
+      console.error("Auth check or initial fetch failed:", error);
+      // setProfiles(mockProfiles); // Fallback to mock data if API fails on initial load
+    } finally {
+      setLoading(false); // Ensure loading is set to false after all initial attempts
+    }
+  };
 
-    // Initialize loading state
-    setLoading(true);
-
-    // Auth after a short delay
-    const authTimeout = setTimeout(() => {
-      console.log('Initiating authentication and profile loading');
-      checkAuth();
-    }, 1000);
-
-    // Cleanup function
-    return () => {
-      clearTimeout(authTimeout);
-    };
+  useEffect(() => {
+    fetchInitialData();
   }, []);
 
-  // FOCUS HOOK FULLY DISABLED - To prevent infinite loading loop
-  // useFocusEffect(
-  //   useCallback(() => {
-  //     // DISABLED - This hook will not run until the issue is resolved
-  //     return () => {};
-  //   }, [])
-  // );
 
-  // State to track profile fetch status
-  const [fetchAttempted, setFetchAttempted] = useState<boolean>(false);
-
-  // fetchProfiles that makes the actual API call
-  const fetchProfiles = async (isRefetch = false) => { // Added isRefetch parameter
-    if (loading && !isRefetch) { // Prevent new fetch if already loading, unless it's a specific refetch
-      console.log('fetchProfiles: Already loading, skipping new fetch.');
+  const fetchProfiles = async (isLoadMore = false, pageToFetch?: number) => {
+    if (loading) { // Simplified: if already loading anything, don't start another profile fetch
+      console.log(`fetchProfiles: Skipping fetch. Currently Loading.`);
       return;
     }
-    try {
-      console.log(`fetchProfiles called (isRefetch: ${isRefetch}) - Fetching profiles from backend`);
-      setLoading(true);
-      // setFetchAttempted(true); // We'll manage refetch differently
+    if (isLoadMore && allProfilesLoaded) {
+      console.log(`fetchProfiles: Skipping fetch. All profiles already loaded.`);
+      return;
+    }
+    
+    const targetPage = pageToFetch !== undefined ? pageToFetch : (isLoadMore ? currentPage : 1);
+    console.log(`fetchProfiles called (isLoadMore: ${isLoadMore}, pageToFetch: ${targetPage}) - Fetching profiles from backend`);
+    setLoading(true);
 
-      // API request limit (max 5 seconds)
-      const timeoutPromise = new Promise<void>((_, reject) => {
-        setTimeout(() => reject(new Error('API request timeout')), 5000);
+    try {
+      const timeoutPromise = new Promise<DiscoverProfilesResponse>((_, reject) => { // Ensure timeout rejects with correct type or Error
+        setTimeout(() => reject(new Error('API request timeout for discoverProfiles')), 7000); 
       });
 
-      // Sending API request
-      console.log('Sending API request: discover profiles');
+      console.log(`Sending API request: discover profiles (Page: ${targetPage}, Limit: 5)`);
       const response = await Promise.race([
-        profileService.discoverProfiles(),
+        profileService.discoverProfiles(targetPage, 5), 
         timeoutPromise
-      ]) as any;
+      ]);
 
-      // Examining API response
-      console.log(`API response received! Success: ${response.success}`);
+      console.log(`API response received! Success: ${response.success}, Profiles: ${response.profiles?.length}`);
+      if (response.pagination) {
+        console.log(`Pagination: Current ${response.pagination.currentPage}, Total ${response.pagination.totalPages}`);
+      }
 
-      if (response.success && response.profiles?.length > 0) {
-        console.log(`Number of API profiles: ${response.profiles.length}`);
-
-        // Printing first profile example
-        console.log('First profile example:', JSON.stringify(response.profiles[0], null, 2));
-
-        // Process profiles from API - set image part to correct format
-        const formattedProfiles: ProfileData[] = response.profiles.map((profile: any) => {
-          console.log(`Creating card for Profile ID: ${profile._id}`);
-
-          // Photo check - more direct approach
-          const defaultImage = require('@/assets/images/react-logo.png'); // Consider a more generic placeholder
+      if (response.success && response.profiles) {
+        const formattedProfiles: ScreenProfileData[] = response.profiles.map((profile: any) => {
+          const defaultImage = require('@/assets/images/react-logo.png');
           let profileImage = defaultImage;
-
-          // If profile photo exists, use URI (must be ImageSourcePropType in require format)
           const mainPhoto = profile.photos?.find((photo: any) => photo.isMain);
           if (mainPhoto?.url) {
             profileImage = { uri: mainPhoto.url };
-            console.log(`Photo URL for ${profile.name}: ${mainPhoto.url}`); // Use profile.name
-          } else {
-            console.log(`No photo for ${profile.name}, using default`); // Use profile.name
+          }
+          // Calculate age if dateOfBirth is present
+          let age;
+          if (profile.user?.dateOfBirth) {
+            const birthDate = new Date(profile.user.dateOfBirth);
+            const today = new Date();
+            age = today.getFullYear() - birthDate.getFullYear();
+            const m = today.getMonth() - birthDate.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+              age--;
+            }
+          } else if (profile.age) { // Use age if directly provided by backend
+            age = profile.age;
           }
 
           return {
             id: profile._id,
-            name: profile.name || "Unnamed", // Use profile.name directly
-            age: profile.age, // Use age directly from backend response
+            name: profile.name || profile.user?.name || "Unnamed",
+            age: age,
             image: profileImage,
             bio: profile.bio || 'No bio information',
             distance: profile.location?.city
@@ -126,57 +114,68 @@ export default function HomeScreen() {
               : 'Location unknown'
           };
         });
+        
+        const shuffledNewProfiles = [...formattedProfiles].sort(() => Math.random() - 0.5);
 
-        // Add shuffle operation
-        const shuffledProfiles = [...formattedProfiles].sort(() => Math.random() - 0.5);
-        // If it's a refetch (e.g. deck empty), we replace the profiles.
-        // If it was an initial load or a different kind of load, one might append.
-        // For simplicity now, always replace.
-        setProfiles(shuffledProfiles);
-        console.log(`${shuffledProfiles.length} profiles successfully loaded from API and shuffled`);
+        if (targetPage === 1 && !isLoadMore) { 
+          setProfiles(shuffledNewProfiles);
+        } else { 
+          setProfiles(prevProfiles => {
+            const existingIds = new Set(prevProfiles.map(p => p.id));
+            const uniqueNewProfiles = shuffledNewProfiles.filter(p => !existingIds.has(p.id));
+            return [...prevProfiles, ...uniqueNewProfiles];
+          });
+        }
+        console.log(`${shuffledNewProfiles.length} profiles processed from API.`);
+
+        if (response.pagination) {
+          setCurrentPage(response.pagination.currentPage + 1); // Prepare for next page
+          setTotalPages(response.pagination.totalPages);
+          if (response.pagination.currentPage >= response.pagination.totalPages) {
+            setAllProfilesLoaded(true);
+            console.log('All profiles loaded.');
+          } else {
+            setAllProfilesLoaded(false);
+          }
+        } else {
+          setAllProfilesLoaded(true); // Assume all loaded if no pagination info
+           console.warn('Pagination info missing from discoverProfiles response. Assuming all loaded.');
+        }
+
       } else {
+        console.log('No new profiles found from API or API call failed:', response.message);
+        if (targetPage === 1 && !isLoadMore) { 
+          setProfiles([]);
+        }
         if (response.success && response.profiles?.length === 0) {
-          console.log('No new profiles found from API.');
-          // Don't clear existing profiles if it was a refetch that found nothing new
-          // but do clear if it's an initial load that found nothing.
-          if (!isRefetch || profiles.length === 0) { // Clear if initial load or if deck was already empty
-            setProfiles([]);
-          }
-        } else if (!response.success) {
-          console.log('API call to fetch profiles was not successful:', response.message || 'Unknown error');
-          if (!isRefetch || profiles.length === 0) {
-             setProfiles([]); // Clear on error for initial load
-          }
+            setAllProfilesLoaded(true); 
         }
       }
-    } catch (error) {
-      console.log('API error:', error);
-      // Use empty array on error
-      setProfiles([]);
+    } catch (error: any) {
+      console.log('fetchProfiles API error:', error.message);
+      if (error.response?.status === 429) {
+        Alert.alert("Rate Limited", "You're swiping too fast! Try again in a moment.");
+        setAllProfilesLoaded(true); // Stop trying to fetch if rate limited for now
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // fetchMatches that tries to get matches from API
   const fetchMatches = async () => {
     console.log('fetchMatches called - Fetching matches from API...');
     try {
-      // Race between API request and timeout
       const timeoutPromise = new Promise<void>((_, reject) => {
-        setTimeout(() => reject(new Error('API request timeout')), 3000);
+        setTimeout(() => reject(new Error('API request timeout for matches')), 3000);
       });
-
       const response = await Promise.race([
         matchService.getMatches(),
         timeoutPromise
-      ]) as any;
-
+      ]) as any; 
       if (response.success) {
         setMatches(response.matches || []);
         console.log(`${response.matches?.length || 0} matches successfully loaded from API`);
       } else {
-        // Use empty array on failure
         setMatches([]);
       }
     } catch (error) {
@@ -185,106 +184,74 @@ export default function HomeScreen() {
     }
   };
 
-  // Swipe operations that send actual API requests to backend
-  const handleSwipeLeft = async (profile: ProfileData) => {
+  const handleSwipeLeft = async (profile: ScreenProfileData) => {
     console.log(`Passing profile ${profile.name} - API request`);
     try {
-      // Send API request
       await matchService.likeOrPassUser({
         targetUserId: profile.id,
         action: 'pass'
       });
+      setProfiles(prev => prev.filter(p => p.id !== profile.id)); // Remove from local state
     } catch (error) {
-      console.log(`API error, action logged: ${error}`);
+      console.log(`API error on pass: ${error}`);
     }
   };
 
-  const handleSwipeRight = async (profile: ProfileData) => {
+  const handleSwipeRight = async (profile: ScreenProfileData) => {
     console.log(`Liking profile ${profile.name} - API request`);
-
     try {
-      // Send API request
       const response = await matchService.likeOrPassUser({
         targetUserId: profile.id,
         action: 'like'
       });
-
       console.log(`Like API response:`, response);
-
-      // Match check
       if (response.success && response.match.isMatch) {
-        // Successful match
         console.log(`🎉 MATCH FORMED! You matched with ${profile.name}!`);
-
-        // Match status alert
-        Alert.alert(
-          "It's a Match!",
-          `You and ${profile.name} liked each other!`,
-          [
-            { text: "Keep Swiping", style: "cancel" },
-            { text: "See Matches", onPress: () => console.log("Navigate to matches") } // Consider navigation
-          ]
+        Alert.alert("It's a Match!", `You and ${profile.name} liked each other!`,
+          [{ text: "Keep Swiping", style: "cancel" }, { text: "See Matches", onPress: () => console.log("Navigate to matches") }]
         );
-
-        // Update match list
         fetchMatches();
       } else if (response.success) {
-        // Successful like but no match yet
         console.log(`${profile.name} liked, but no match yet`);
       } else {
-        // Failed API response - Like quota finished or other error
-        console.log(`API response failed: ${response.message || 'Unknown error'}`);
-
-        // Notify user that like quota is finished
-        Alert.alert(
-          "Like Quota Reached",
-          response.message || "Your daily like quota is full. Upgrade to premium to like more cards or try again tomorrow.",
-          [
-            { text: "OK", style: "cancel" },
-            {
-              text: "Upgrade to Premium",
-              onPress: () => {
-                console.log("Redirecting to Subscription screen");
-                // Add navigation code to subscription screen here
-              }
-            }
-          ]
+        console.log(`API response failed on like: ${response.message || 'Unknown error'}`);
+        Alert.alert("Like Quota Reached", response.message || "Your daily like quota is full.",
+          [{ text: "OK", style: "cancel" }, { text: "Upgrade to Premium", onPress: () => console.log("Redirect to Subscription")}]
         );
       }
     } catch (error) {
-      // Serious error - means this API request completely failed
-      console.log(`Critical API error: ${error}`);
+      console.log(`Critical API error on like: ${error}`);
+    } finally {
+      setProfiles(prev => prev.filter(p => p.id !== profile.id)); // Remove from local state regardless of like success
     }
   };
 
   const handleDeckEmpty = () => {
     console.log('handleDeckEmpty called.');
-    if (!loading) { // Only fetch if not already loading
-      console.log('Deck empty and not currently loading, fetching new profiles...');
-      fetchProfiles(true); // Pass true to indicate it's a refetch due to empty deck
+    if (!loading && !allProfilesLoaded) { 
+      console.log('Deck empty, not loading, and not all profiles loaded. Fetching more...');
+      fetchProfiles(true); // true indicates it's a "load more" scenario (will fetch currentPage)
     } else {
-      console.log('Deck empty, but already loading. Will not trigger another fetch.');
+      if (loading) console.log('Deck empty, but already loading.');
+      if (allProfilesLoaded) console.log('Deck empty, but all profiles already loaded.');
     }
   };
 
-  // The calculateAge function is no longer needed here as age comes from backend
-  // const calculateAge = (dob: string): number => { ... };
-
-  if (loading) {
-    return (
-      <ThemedView style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" />
-      </ThemedView>
-    );
-  }
-
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !loading) { // Show login prompt only if not authenticated and not in initial load
     return (
       <ThemedView style={[styles.container, styles.centered]}>
         <ThemedText type="title">Please Log In</ThemedText>
-        <ThemedText style={styles.infoText}>
-          You need to log in to your account to see matches.
-        </ThemedText>
+        <ThemedText style={styles.infoText}>You need to log in to see profiles.</ThemedText>
+      </ThemedView>
+    );
+  }
+  
+  // Show loader if loading is true, OR if not authenticated yet but initial auth check is running
+  if (loading || (isAuthenticated === false && profiles.length === 0)) { 
+    return (
+      <ThemedView style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" />
+        <ThemedText>Loading profiles...</ThemedText>
       </ThemedView>
     );
   }
@@ -296,16 +263,12 @@ export default function HomeScreen() {
         <ThemedText>{matches.length} matches so far</ThemedText>
       </ThemedView>
 
-      {loading ? (
-        <ActivityIndicator size="large" style={styles.loader} />
-      ) : (
-        <CardDeck
-          profiles={profiles}
-          onSwipeLeft={handleSwipeLeft}
-          onSwipeRight={handleSwipeRight}
-          onDeckEmpty={handleDeckEmpty}
-        />
-      )}
+      <CardDeck
+        profiles={profiles}
+        onSwipeLeft={handleSwipeLeft}
+        onSwipeRight={handleSwipeRight}
+        onDeckEmpty={handleDeckEmpty}
+      />
     </ThemedView>
   );
 }
@@ -316,7 +279,7 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   header: {
-    paddingTop: 60,
+    paddingTop: 60, // Adjust as needed for status bar, etc.
     paddingBottom: 20,
     alignItems: 'center',
   },
@@ -324,11 +287,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loader: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  // loader style removed as ActivityIndicator is used directly with text
   infoText: {
     marginTop: 10,
     textAlign: 'center',
