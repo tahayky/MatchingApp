@@ -175,7 +175,7 @@ apiClient.interceptors.request.use(
       if (token) {
         // Doğru Authorization başlık formatı
         config.headers.Authorization = `Bearer ${token}`;
-        console.log('📝 Token eklendi, token:', token.substring(0, 15) + '...');
+        console.log('📝 Token eklendi (tamamı):', token); // Log the full token for debugging
       } else {
         console.log('⚠️ Token bulunamadı veya geçersiz! API isteği yetkisiz olacak.');
       }

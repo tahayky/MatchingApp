@@ -294,15 +294,14 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
 }, async (req: AuthRequest, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
-    // Use the 'limit' from query param, default to 5 if not provided or invalid.
-    // This 'limit' is for how many profiles to RETURN, not the rate limit 'max' calls.
-    let queryLimit = parseInt(req.query.limit as string);
-    if (isNaN(queryLimit) || queryLimit <= 0) {
-      queryLimit = 5; // Default number of profiles to return per call
-    }
+    // Client'tan gelen 'limit' parametresini yok say.
+    // Her zaman backend tarafından belirlenen sabit bir limit kullan (şimdilik 5).
+    // TODO: Bu 'profilesPerPageSetting' değerini veritabanındaki merkezi ayardan oku.
+    const profilesPerPageSetting = 5; 
+    const queryLimit = profilesPerPageSetting; // Artık client'tan gelen limit kullanılmıyor.
     const skip = (page - 1) * queryLimit;
 
-    console.log(`[${new Date().toISOString()}] [DISCOVER HANDLER] Entered main handler for /discover. UserID: ${req.user?._id}. Page: ${page}, Return Limit: ${queryLimit}`);
+    console.log(`[${new Date().toISOString()}] [DISCOVER HANDLER] Entered main handler for /discover. UserID: ${req.user?._id}. Page: ${page}, Return Limit (fixed by backend): ${queryLimit}`);
     
     if (!req.user || !req.user._id) {
       return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
@@ -382,8 +381,8 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
 
     const potentialMatches = await User.find(query)
       .select('_id name dateOfBirth gender photos bio location interests occupation education')
-      .skip(skip) // Apply skip for pagination
-      .limit(queryLimit); // Apply limit for profiles returned per call
+      .skip(skip) 
+      .limit(queryLimit); 
     
     console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} potential matches from DB (page: ${page}, limit: ${queryLimit}, total matching before limit: ${totalMatchingProfiles}).`);
 
