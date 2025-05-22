@@ -1,48 +1,48 @@
 import { StyleSheet, Alert, View, ActivityIndicator } from 'react-native';
 import { useState, useCallback, useEffect } from 'react';
-// import { useFocusEffect } from '@react-navigation/native'; // Keep commented if not immediately needed
+// import { useFocusEffect } from '@react-navigation/native'; 
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { CardDeck } from '@/components/CardDeck';
-import { ProfileData as SwipeableCardProfileData } from '@/components/SwipeableCard'; // Renamed to avoid conflict
-import { profileService, matchService, authService, DiscoverProfilesResponse } from '@/services'; // Added DiscoverProfilesResponse
-import { mockProfiles } from '@/utils/mockData'; // Keep for fallback if desired, or remove
+import { ProfileData as SwipeableCardProfileData } from '@/components/SwipeableCard'; 
+import { profileService, matchService, authService, DiscoverProfilesResponse } from '@/services'; 
 
-// Define a more specific type for profiles used in this screen, matching SwipeableCard's expectation
 type ScreenProfileData = SwipeableCardProfileData;
+
+const RETRY_DELAY_MS = 7000; // Yeniden denemeler arası bekleme süresi (ms), biraz artırdım
 
 export default function HomeScreen() {
   const [profiles, setProfiles] = useState<ScreenProfileData[]>([]);
-  const [matches, setMatches] = useState<any[]>([]); // Consider a specific Match type
-  const [loading, setLoading] = useState<boolean>(false); // Initial false, true when fetching
+  const [matches, setMatches] = useState<any[]>([]); 
+  const [loading, setLoading] = useState<boolean>(false); 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [allProfilesLoaded, setAllProfilesLoaded] = useState<boolean>(false);
+  // retryCount state'i kaldırıldı, artık sonsuz deneyecek (uygulama kapanana kadar)
 
   const fetchInitialData = async () => {
     console.log('fetchInitialData: Initiating authentication and profile loading');
-    setLoading(true); // Set loading true at the start of initial data fetch
+    setLoading(true); 
     try {
       const authenticated = await authService.isAuthenticated();
       setIsAuthenticated(authenticated);
 
       if (authenticated) {
         console.log('Authenticated, fetching initial profiles (page 1) and matches...');
-        await fetchProfiles(false, 1); // Fetch page 1 explicitly
-        await fetchMatches(); // Fetch matches after profiles or in parallel
+        await fetchProfiles(false, 1); 
+        await fetchMatches(); 
       } else {
         console.log('Not authenticated, no data will be fetched.');
-        setProfiles([]); // Clear profiles if not authenticated
+        setProfiles([]); 
         setMatches([]);
+        setLoading(false); 
       }
     } catch (error) {
       console.error("Auth check or initial fetch failed:", error);
-      // setProfiles(mockProfiles); // Fallback to mock data if API fails on initial load
-    } finally {
-      setLoading(false); // Ensure loading is set to false after all initial attempts
+      setLoading(false); 
     }
   };
 
@@ -50,9 +50,8 @@ export default function HomeScreen() {
     fetchInitialData();
   }, []);
 
-
   const fetchProfiles = async (isLoadMore = false, pageToFetch?: number) => {
-    if (loading) { // Simplified: if already loading anything, don't start another profile fetch
+    if (loading && !isLoadMore) { 
       console.log(`fetchProfiles: Skipping fetch. Currently Loading.`);
       return;
     }
@@ -62,15 +61,14 @@ export default function HomeScreen() {
     }
     
     const targetPage = pageToFetch !== undefined ? pageToFetch : (isLoadMore ? currentPage : 1);
-    console.log(`fetchProfiles called (isLoadMore: ${isLoadMore}, pageToFetch: ${targetPage}) - Fetching profiles from backend`);
+    console.log(`fetchProfiles called (isLoadMore: ${isLoadMore}, pageToFetch: ${targetPage})`);
     setLoading(true);
 
     try {
-      const timeoutPromise = new Promise<DiscoverProfilesResponse>((_, reject) => { // Ensure timeout rejects with correct type or Error
+      const timeoutPromise = new Promise<DiscoverProfilesResponse>((_, reject) => {
         setTimeout(() => reject(new Error('API request timeout for discoverProfiles')), 7000); 
       });
 
-      console.log(`Sending API request: discover profiles (Page: ${targetPage}, Limit: 5)`);
       const response = await Promise.race([
         profileService.discoverProfiles(targetPage, 5), 
         timeoutPromise
@@ -89,7 +87,6 @@ export default function HomeScreen() {
           if (mainPhoto?.url) {
             profileImage = { uri: mainPhoto.url };
           }
-          // Calculate age if dateOfBirth is present
           let age;
           if (profile.user?.dateOfBirth) {
             const birthDate = new Date(profile.user.dateOfBirth);
@@ -99,10 +96,9 @@ export default function HomeScreen() {
             if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
               age--;
             }
-          } else if (profile.age) { // Use age if directly provided by backend
+          } else if (profile.age) {
             age = profile.age;
           }
-
           return {
             id: profile._id,
             name: profile.name || profile.user?.name || "Unnamed",
@@ -129,20 +125,20 @@ export default function HomeScreen() {
         console.log(`${shuffledNewProfiles.length} profiles processed from API.`);
 
         if (response.pagination) {
-          setCurrentPage(response.pagination.currentPage + 1); // Prepare for next page
+          setCurrentPage(response.pagination.currentPage + 1); 
           setTotalPages(response.pagination.totalPages);
-          if (response.pagination.currentPage >= response.pagination.totalPages) {
+          if (response.pagination.currentPage >= response.pagination.totalPages || response.profiles.length === 0) {
             setAllProfilesLoaded(true);
-            console.log('All profiles loaded.');
+            console.log(response.profiles.length === 0 ? 'No more profiles returned by API.' : 'All profiles loaded based on totalPages.');
           } else {
             setAllProfilesLoaded(false);
           }
         } else {
-          setAllProfilesLoaded(true); // Assume all loaded if no pagination info
+          setAllProfilesLoaded(true); 
            console.warn('Pagination info missing from discoverProfiles response. Assuming all loaded.');
         }
-
-      } else {
+        setLoading(false); 
+      } else { 
         console.log('No new profiles found from API or API call failed:', response.message);
         if (targetPage === 1 && !isLoadMore) { 
           setProfiles([]);
@@ -150,15 +146,47 @@ export default function HomeScreen() {
         if (response.success && response.profiles?.length === 0) {
             setAllProfilesLoaded(true); 
         }
+        if (!response.success) {
+            throw new Error(response.message || 'API call to fetch profiles was not successful');
+        }
+        setLoading(false); 
       }
     } catch (error: any) {
-      console.log('fetchProfiles API error:', error.message);
-      if (error.response?.status === 429) {
-        Alert.alert("Rate Limited", "You're swiping too fast! Try again in a moment.");
-        setAllProfilesLoaded(true); // Stop trying to fetch if rate limited for now
+      console.log(`fetchProfiles API error (Page: ${targetPage}):`, error.message);
+      
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        console.log('Authentication/Authorization error. Stopping retries.');
+        setIsAuthenticated(false); 
+        setAllProfilesLoaded(true); // Daha fazla deneme yapma
+        setLoading(false);
+        // Kullanıcıya login olması gerektiğini belirten bir mesaj gösterilebilir veya login ekranına yönlendirilebilir.
+        // Şimdilik Alert göstermiyoruz, sadece denemeyi durduruyoruz.
+        return;
       }
-    } finally {
-      setLoading(false);
+      
+      // Yeniden denenebilir hatalar (429, 5xx, ağ hatası) için sonsuz deneme
+      const isRetryableError = error.response?.status === 429 || 
+                               error.response?.status === 500 || 
+                               error.response?.status === 503 || 
+                               !error.response; // Ağ hatası (error.response tanımsız)
+      
+      if (isRetryableError) {
+        console.log(`API request failed for page ${targetPage}. Retrying in ${RETRY_DELAY_MS / 1000}s... (Infinite retry)`);
+        setTimeout(() => {
+          // setLoading(true) bir sonraki fetchProfiles çağrısının başında yapılacak
+          fetchProfiles(isLoadMore, targetPage); 
+        }, RETRY_DELAY_MS);
+        // setLoading(false) burada çağrılmamalı, çünkü yeniden deneme planlandı.
+        return; 
+      } else {
+        // Diğer (yeniden denenemeyecek) HTTP hataları
+        console.log('Non-retryable API error. Stopping further fetches for this page.');
+        // Kullanıcıya hata göstermiyoruz, sadece denemeyi durduruyoruz.
+        // Belki burada allProfilesLoaded true yapılabilir veya başka bir state ile UI'da bilgi verilebilir.
+        // Şimdilik sadece denemeyi durdurup loading'i false yapalım.
+        setAllProfilesLoaded(true); // Bu sayfa için daha fazla deneme yapma
+      }
+      setLoading(false); 
     }
   };
 
@@ -186,12 +214,12 @@ export default function HomeScreen() {
 
   const handleSwipeLeft = async (profile: ScreenProfileData) => {
     console.log(`Passing profile ${profile.name} - API request`);
+    setProfiles(prev => prev.filter(p => p.id !== profile.id));
     try {
       await matchService.likeOrPassUser({
         targetUserId: profile.id,
         action: 'pass'
       });
-      setProfiles(prev => prev.filter(p => p.id !== profile.id)); // Remove from local state
     } catch (error) {
       console.log(`API error on pass: ${error}`);
     }
@@ -199,6 +227,7 @@ export default function HomeScreen() {
 
   const handleSwipeRight = async (profile: ScreenProfileData) => {
     console.log(`Liking profile ${profile.name} - API request`);
+    setProfiles(prev => prev.filter(p => p.id !== profile.id));
     try {
       const response = await matchService.likeOrPassUser({
         targetUserId: profile.id,
@@ -221,8 +250,6 @@ export default function HomeScreen() {
       }
     } catch (error) {
       console.log(`Critical API error on like: ${error}`);
-    } finally {
-      setProfiles(prev => prev.filter(p => p.id !== profile.id)); // Remove from local state regardless of like success
     }
   };
 
@@ -230,28 +257,29 @@ export default function HomeScreen() {
     console.log('handleDeckEmpty called.');
     if (!loading && !allProfilesLoaded) { 
       console.log('Deck empty, not loading, and not all profiles loaded. Fetching more...');
-      fetchProfiles(true); // true indicates it's a "load more" scenario (will fetch currentPage)
+      fetchProfiles(true); 
     } else {
       if (loading) console.log('Deck empty, but already loading.');
       if (allProfilesLoaded) console.log('Deck empty, but all profiles already loaded.');
     }
   };
-
-  if (!isAuthenticated && !loading) { // Show login prompt only if not authenticated and not in initial load
-    return (
-      <ThemedView style={[styles.container, styles.centered]}>
-        <ThemedText type="title">Please Log In</ThemedText>
-        <ThemedText style={styles.infoText}>You need to log in to see profiles.</ThemedText>
-      </ThemedView>
-    );
-  }
   
-  // Show loader if loading is true, OR if not authenticated yet but initial auth check is running
-  if (loading || (isAuthenticated === false && profiles.length === 0)) { 
+  const initialLoadingCheck = !isAuthenticated && loading;
+
+  if (initialLoadingCheck) { 
     return (
       <ThemedView style={[styles.container, styles.centered]}>
         <ActivityIndicator size="large" />
         <ThemedText>Loading profiles...</ThemedText>
+      </ThemedView>
+    );
+  }
+
+  if (!isAuthenticated) { 
+    return (
+      <ThemedView style={[styles.container, styles.centered]}>
+        <ThemedText type="title">Please Log In</ThemedText>
+        <ThemedText style={styles.infoText}>You need to log in to see profiles.</ThemedText>
       </ThemedView>
     );
   }
@@ -263,12 +291,27 @@ export default function HomeScreen() {
         <ThemedText>{matches.length} matches so far</ThemedText>
       </ThemedView>
 
-      <CardDeck
-        profiles={profiles}
-        onSwipeLeft={handleSwipeLeft}
-        onSwipeRight={handleSwipeRight}
-        onDeckEmpty={handleDeckEmpty}
-      />
+      {profiles.length === 0 && !loading && allProfilesLoaded && (
+         <ThemedView style={[styles.container, styles.centered]}>
+            <ThemedText type="subtitle">No more profiles to show.</ThemedText>
+            <ThemedText>Check back later!</ThemedText>
+         </ThemedView>
+      )}
+      {profiles.length === 0 && loading && ( 
+         <ThemedView style={[styles.container, styles.centered]}>
+            <ActivityIndicator size="large" />
+            <ThemedText>Loading profiles...</ThemedText>
+         </ThemedView>
+      )}
+
+      {profiles.length > 0 && (
+        <CardDeck
+          profiles={profiles}
+          onSwipeLeft={handleSwipeLeft}
+          onSwipeRight={handleSwipeRight}
+          onDeckEmpty={handleDeckEmpty}
+        />
+      )}
     </ThemedView>
   );
 }
@@ -279,7 +322,7 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   header: {
-    paddingTop: 60, // Adjust as needed for status bar, etc.
+    paddingTop: 60, 
     paddingBottom: 20,
     alignItems: 'center',
   },
@@ -287,7 +330,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // loader style removed as ActivityIndicator is used directly with text
   infoText: {
     marginTop: 10,
     textAlign: 'center',
