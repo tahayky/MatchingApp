@@ -165,11 +165,12 @@ const DEFAULT_PROFILES_PER_PAGE = 5; // Default profiles per page
 
 let currentProfilesPerPage: number = DEFAULT_PROFILES_PER_PAGE; // Global variable for profiles per page
 
-// New module-level variables for rate limiting parameters and store
+// Module-level variables for rate limiting
 let currentWindowMsRateLimit: number = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs;
 let currentMaxRateLimit: number = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.max;
 let currentMessageRateLimit: string = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
-let rateLimitStore: any | undefined; // Using any to bypass TS type error for now
+let discoverLimiterInstance: ReturnType<typeof rateLimit> | undefined; // To hold the rate-limit middleware
+let mongoStoreInstanceForRateLimit: any | undefined; // To hold the MongoStore instance
 
 // Function to update the "profiles per page" setting from DB
 export async function updateProfilesPerPageSetting() {
@@ -200,96 +201,92 @@ export async function updateProfilesPerPageSetting() {
 
 // Function to update the rate limiter settings from DB
 export async function updateDiscoverLimiter() {
-  console.log('[MongoStore Debug] Entered updateDiscoverLimiter function.');
-  // Logging for MongoStoreImport
-  console.log(`[MongoStore Debug] typeof MongoStoreImport: ${typeof MongoStoreImport}`);
-  if (typeof MongoStoreImport === 'function') {
-      console.log(`[MongoStore Debug] MongoStoreImport.name (constructor name): ${MongoStoreImport.name}`);
-      console.log(`[MongoStore Debug] 'get' in MongoStoreImport.prototype: ${MongoStoreImport.prototype ? 'get' in MongoStoreImport.prototype : 'N/A (no prototype)'}`);
-      console.log(`[MongoStore Debug] typeof MongoStoreImport.prototype.get: ${MongoStoreImport.prototype ? typeof MongoStoreImport.prototype.get : 'N/A (no prototype)'}`);
-  } else if (typeof MongoStoreImport === 'object' && MongoStoreImport !== null) {
-      console.log(`[MongoStore Debug] MongoStoreImport is an object. Keys: ${Object.keys(MongoStoreImport).join(', ')}`);
-  }
+  console.log('[RateLimiter Setup] Entered updateDiscoverLimiter function.');
 
-
-  // Use module-level variables, update them from DB or defaults
   let newWindowMs = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs;
   let newMax = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.max;
   let newMessageString = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
 
   try {
-    console.log(`[RateLimit UPDATE] Attempting to find AppSetting with key: ${DISCOVER_RATE_LIMIT_KEY}`);
+    console.log(`[RateLimiter Setup] Attempting to find AppSetting with key: ${DISCOVER_RATE_LIMIT_KEY}`);
     const dbSetting = await AppSetting.findOne({ key: DISCOVER_RATE_LIMIT_KEY });
     if (dbSetting) {
-      console.log(`[RateLimit UPDATE] Found DB setting. Value:`, JSON.stringify(dbSetting.value, null, 2));
+      console.log(`[RateLimiter Setup] Found DB setting. Value:`, JSON.stringify(dbSetting.value, null, 2));
       if (dbSetting.value && typeof dbSetting.value.windowMs === 'number' && typeof dbSetting.value.max === 'number') {
         newWindowMs = dbSetting.value.windowMs;
         newMax = dbSetting.value.max;
         if (dbSetting.value.message && typeof dbSetting.value.message === 'string') {
           newMessageString = dbSetting.value.message;
-        } else {
-          console.log(`[RateLimit UPDATE] DB setting for message is missing or not a string, using default message string.`);
         }
-        console.log(`[RateLimit UPDATE] Successfully read DB config for /discover: ${newMax} successful req / ${newWindowMs / 1000}s. Message string: "${newMessageString}"`);
+        console.log(`[RateLimiter Setup] Successfully read DB config for /discover: ${newMax} successful req / ${newWindowMs / 1000}s.`);
       } else {
-        console.log(`[RateLimit UPDATE] DB setting found but 'value' or 'windowMs'/'max' fields are invalid. Using defaults.`);
+        console.log(`[RateLimiter Setup] DB setting found but 'value' or 'windowMs'/'max' fields are invalid. Using defaults.`);
       }
     } else {
-      console.log(`[RateLimit UPDATE] No DB config found for key '${DISCOVER_RATE_LIMIT_KEY}'. Using defaults.`);
+      console.log(`[RateLimiter Setup] No DB config found for key '${DISCOVER_RATE_LIMIT_KEY}'. Using defaults.`);
     }
   } catch (error) {
-    console.error('[RateLimit UPDATE] Error fetching discover rate limit settings from DB, using defaults:', error);
+    console.error('[RateLimiter Setup] Error fetching discover rate limit settings from DB, using defaults:', error);
   }
 
   currentWindowMsRateLimit = newWindowMs;
   currentMaxRateLimit = newMax;
-  currentMessageRateLimit = newMessageString || DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message; // Ensure message has a fallback
+  currentMessageRateLimit = newMessageString || DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
 
   const mongoUri = process.env.MONGODB_URI;
-  console.log(`[MongoStore Debug] MONGODB_URI: ${mongoUri ? '****** (defined)' : 'undefined'}`);
-
   if (mongoUri) {
-    if (!rateLimitStore || (rateLimitStore as any).options?.expireTimeMs !== currentWindowMsRateLimit) {
-        if (rateLimitStore) {
-            console.log(`[RateLimit Store] Recreating MongoStore due to configuration change. Old expireTimeMs: ${(rateLimitStore as any).options?.expireTimeMs}, New: ${currentWindowMsRateLimit}`);
-        } else {
-            console.log(`[RateLimit Store] Attempting to create new MongoStore instance. ExpireTimeMs: ${currentWindowMsRateLimit}`);
-        }
-        try {
-            // Instantiation using MongoStoreImport
-            rateLimitStore = new MongoStoreImport({
-                uri: mongoUri,
-                collectionName: 'apiRateLimits_discover_successful_v3',
-                expireTimeMs: currentWindowMsRateLimit,
-                errorHandler: (err: any) => {
-                    console.error('[MongoStore RUNTIME ERROR] Error reported by rate-limit-mongo store:', err);
-                }
-            });
-            if (rateLimitStore) {
-                console.log(`[MongoStore Debug] MongoStore instance CREATED successfully using 'new MongoStoreImport(...)'.`);
-                console.log(`[MongoStore Debug] typeof rateLimitStore.get: ${typeof (rateLimitStore as any).get}`);
-                console.log(`[MongoStore Debug] typeof rateLimitStore.increment: ${typeof (rateLimitStore as any).increment}`);
-                if (typeof MongoStoreImport === 'function') {
-                     console.log(`[MongoStore Debug] rateLimitStore instanceof MongoStoreImport: ${rateLimitStore instanceof MongoStoreImport}`);
-                }
-                console.log(`[MongoStore Debug] rateLimitStore.constructor.name: ${rateLimitStore.constructor?.name}`);
-            } else {
-                console.error('[MongoStore Debug] MongoStoreImport instantiation returned null or undefined.');
-            }
-        } catch (constructorError) {
-            console.error('[MongoStore Debug] CRITICAL ERROR during MongoStoreImport instantiation:', constructorError);
-            rateLimitStore = undefined; // Ensure it's undefined if construction fails
-        }
-        console.log(`[RateLimit Store] MongoStore configuration attempt finished. Current rateLimitStore defined: ${!!rateLimitStore}`);
+    // Recreate store if it doesn't exist or if windowMs has changed
+    if (!mongoStoreInstanceForRateLimit || (mongoStoreInstanceForRateLimit as any).options?.expireTimeMs !== currentWindowMsRateLimit) {
+      console.log(`[RateLimiter Setup] Creating/Recreating MongoStore instance. ExpireTimeMs: ${currentWindowMsRateLimit}`);
+      try {
+        mongoStoreInstanceForRateLimit = new MongoStoreImport({
+          uri: mongoUri,
+          collectionName: 'apiRateLimits_discover_v4', // Changed collection name for fresh start
+          expireTimeMs: currentWindowMsRateLimit,
+          errorHandler: (err: any) => {
+            console.error('[MongoStore RUNTIME ERROR] Error reported by rate-limit-mongo store:', err);
+          }
+        });
+        console.log(`[RateLimiter Setup] MongoStore instance for rate limiting CREATED successfully.`);
+      } catch (storeError) {
+        console.error('[RateLimiter Setup] CRITICAL ERROR during MongoStoreImport instantiation:', storeError);
+        mongoStoreInstanceForRateLimit = undefined;
+      }
     } else {
-        console.log(`[RateLimit Store] MongoStore instance already exists and configuration (expireTimeMs) has not changed. Skipping recreation.`);
+        console.log(`[RateLimiter Setup] MongoStore instance already exists and configuration (expireTimeMs) has not changed.`);
+    }
+
+    if (mongoStoreInstanceForRateLimit) {
+      console.log(`[RateLimiter Setup] Creating new express-rate-limit middleware instance.`);
+      discoverLimiterInstance = rateLimit({
+        store: mongoStoreInstanceForRateLimit,
+        windowMs: currentWindowMsRateLimit,
+        max: currentMaxRateLimit, // Max number of successful requests
+        message: { success: false, message: currentMessageRateLimit },
+        skipFailedRequests: true, // *** This is the key change: only count 2xx responses ***
+        keyGenerator: (req: Request) => {
+          const authReq = req as AuthRequest;
+          return authReq.user?._id?.toString() || authReq.ip;
+        },
+        handler: (req: Request, res: Response, next: NextFunction, optionsUsed: any) => {
+          const authReq = req as AuthRequest;
+          console.warn(`[RATE LIMIT EXCEEDED] For /discover. Key: ${authReq.user?._id?.toString() || authReq.ip}. Max successful: ${optionsUsed.max}. Window: ${optionsUsed.windowMs / 1000}s.`);
+          res.status(optionsUsed.statusCode || 429).json(optionsUsed.message);
+        },
+        standardHeaders: true,
+        legacyHeaders: false,
+      });
+      console.log(`[RateLimiter Setup] express-rate-limit middleware configured to count successful requests. Max: ${currentMaxRateLimit}, Window: ${currentWindowMsRateLimit / 1000}s.`);
+    } else {
+      console.error('[RateLimiter Setup] MongoStore instance is not available. Rate limiting will be bypassed.');
+      discoverLimiterInstance = undefined;
     }
   } else {
-    rateLimitStore = undefined;
-    console.warn('[RateLimit Store] MONGODB_URI not defined. Persistent rate limiting for successful requests disabled. rateLimitStore is undefined.');
+    console.warn('[RateLimiter Setup] MONGODB_URI not defined. Rate limiting will be bypassed.');
+    mongoStoreInstanceForRateLimit = undefined;
+    discoverLimiterInstance = undefined;
   }
-  console.log(`[RateLimit Config] Rate limit for successful /discover responses: Max ${currentMaxRateLimit} per ${currentWindowMsRateLimit / 1000}s. Message: "${currentMessageRateLimit}"`);
-  console.log('[MongoStore Debug] Exiting updateDiscoverLimiter function.');
+  console.log('[RateLimiter Setup] Exiting updateDiscoverLimiter function.');
 }
 
 // Initial calls to load settings at startup
@@ -311,39 +308,23 @@ console.log('[userProfile-ts.ts] Setting up initial calls to updaters...');
   }
 })();
 
-router.get('/discover', protect, async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/discover', protect, (req: Request, res: Response, next: NextFunction) => {
+  // Apply the discoverLimiterInstance middleware if it's defined
+  if (discoverLimiterInstance) {
+    console.log(`[${new Date().toISOString()}] [DISCOVER PRE-HANDLER] Applying discoverLimiterInstance.`);
+    discoverLimiterInstance(req, res, next);
+  } else {
+    // If limiter is not set up (e.g., MONGODB_URI missing), bypass rate limiting
+    console.warn(`[${new Date().toISOString()}] [DISCOVER PRE-HANDLER] discoverLimiterInstance is not defined. Bypassing rate limit for /discover.`);
+    next();
+  }
+}, async (req: AuthRequest, res: Response) => {
+  // Main route handler logic starts here, after rate limiter (if any) has passed
   const requestTimestampStart = new Date().toISOString();
   const authReq = req as AuthRequest;
-  const rateLimitKey = authReq.user?._id?.toString() || authReq.ip;
-
-  console.log(`[${requestTimestampStart}] [DISCOVER REQ START] UserID: ${authReq.user?._id}, IP: ${authReq.ip}, Key: ${rateLimitKey}, Page: ${req.query.page}`);
+  console.log(`[${requestTimestampStart}] [DISCOVER HANDLER] UserID: ${authReq.user?._id}, IP: ${authReq.ip}, Page: ${req.query.page}`);
 
   try {
-    // Manual Rate Limiting for successful responses
-    if (rateLimitStore && currentMaxRateLimit > 0) {
-      console.log(`[DISCOVER RATE CHECK] Proceeding with rateLimitStore. typeof .get: ${typeof (rateLimitStore as any).get}, typeof .increment: ${typeof (rateLimitStore as any).increment}`);
-      const storeResult = await rateLimitStore.get(rateLimitKey); // This is where the error occurred
-      const currentHits = storeResult ? storeResult.totalHits : 0;
-      const resetTime = storeResult ? storeResult.resetTime : undefined;
-
-      console.log(`[${new Date().toISOString()}] [DISCOVER RATE CHECK] Key: ${rateLimitKey}, Hits: ${currentHits}, Max: ${currentMaxRateLimit}, ResetTime: ${resetTime?.toISOString()}`);
-
-      if (currentHits >= currentMaxRateLimit) {
-        console.warn(`[${new Date().toISOString()}] [DISCOVER RATE LIMIT EXCEEDED] Key: ${rateLimitKey}, UserID: ${authReq.user?._id}, IP: ${authReq.ip}. Hits: ${currentHits}. Max: ${currentMaxRateLimit}.`);
-        return res.status(429).json({
-          success: false,
-          message: currentMessageRateLimit,
-          details: {
-            reason: "Rate limit for successful discovery requests exceeded.",
-            currentHits: currentHits,
-            limit: currentMaxRateLimit,
-            resetTime: resetTime?.toISOString(),
-            windowMs: currentWindowMsRateLimit
-          }
-        });
-      }
-    }
-
     const page = parseInt(req.query.page as string) || 1;
     const queryLimit = currentProfilesPerPage;
     const skip = (page - 1) * queryLimit;
@@ -476,19 +457,8 @@ router.get('/discover', protect, async (req: AuthRequest, res: Response, next: N
       console.log(`[DISCOVER PROFILES] Updated viewedProfiles for User ID: ${currentUser._id}. Added ${newViewedProfileIds.length} profiles.`);
     }
 
-    // ... (rest of the existing logic to fetch and format profiles) ...
-    // Ensure currentUser, query, potentialMatches, formattedUsers logic remains the same
-
-    // If successful response is to be sent (formattedUsers created):
-    if (rateLimitStore && currentMaxRateLimit > 0) {
-      try {
-        const incrementResult = await rateLimitStore.increment(rateLimitKey);
-        console.log(`[${new Date().toISOString()}] [DISCOVER RATE INCREMENT] Successful request. Key: ${rateLimitKey}, UserID: ${authReq.user?._id}. New Hits: ${incrementResult?.totalHits}, ResetTime: ${incrementResult?.resetTime?.toISOString()}`);
-      } catch (incrementError) {
-        console.error(`[${new Date().toISOString()}] [DISCOVER RATE INCREMENT FAILED] Key: ${rateLimitKey}. Error:`, incrementError);
-        // Non-fatal, log and continue sending response
-      }
-    }
+    // Removed manual rate limit increment logic.
+    // express-rate-limit with skipFailedRequests: true will handle counting successful (2xx) responses.
 
     console.log(`[${new Date().toISOString()}] [DISCOVER REQ SUCCESS] UserID: ${authReq.user?._id}. Responding with ${formattedUsers.length} profiles.`);
     return res.json({
