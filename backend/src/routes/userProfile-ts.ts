@@ -1,7 +1,7 @@
 console.log('[userProfile-ts.ts] Module loading...');
 import express, { Request, Response, Router, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
-import MongoStore = require('rate-limit-mongo');
+import MongoStoreImport = require('rate-limit-mongo'); // Renamed to avoid potential global type conflicts and for clarity in logs
 import AppSetting from '../models/AppSetting';
 import mongoose from 'mongoose';
 import multer from 'multer';
@@ -169,7 +169,7 @@ let currentProfilesPerPage: number = DEFAULT_PROFILES_PER_PAGE; // Global variab
 let currentWindowMsRateLimit: number = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs;
 let currentMaxRateLimit: number = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.max;
 let currentMessageRateLimit: string = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
-let rateLimitStore: InstanceType<typeof MongoStore> | undefined;
+let rateLimitStore: InstanceType<typeof MongoStoreImport> | undefined;
 
 // Function to update the "profiles per page" setting from DB
 export async function updateProfilesPerPageSetting() {
@@ -200,6 +200,17 @@ export async function updateProfilesPerPageSetting() {
 
 // Function to update the rate limiter settings from DB
 export async function updateDiscoverLimiter() {
+  console.log('[MongoStore Debug] Entered updateDiscoverLimiter function.');
+  console.log(`[MongoStore Debug] typeof MongoStoreImport: ${typeof MongoStoreImport}`);
+  if (typeof MongoStoreImport === 'function') {
+      console.log(`[MongoStore Debug] MongoStoreImport.name (constructor name): ${MongoStoreImport.name}`);
+      console.log(`[MongoStore Debug] 'get' in MongoStoreImport.prototype: ${MongoStoreImport.prototype ? 'get' in MongoStoreImport.prototype : 'N/A (no prototype)'}`);
+      console.log(`[MongoStore Debug] typeof MongoStoreImport.prototype.get: ${MongoStoreImport.prototype ? typeof MongoStoreImport.prototype.get : 'N/A (no prototype)'}`);
+  } else if (typeof MongoStoreImport === 'object' && MongoStoreImport !== null) {
+      console.log(`[MongoStore Debug] MongoStoreImport is an object. Keys: ${Object.keys(MongoStoreImport).join(', ')}`);
+  }
+
+
   // Use module-level variables, update them from DB or defaults
   let newWindowMs = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs;
   let newMax = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.max;
@@ -234,29 +245,47 @@ export async function updateDiscoverLimiter() {
   currentMessageRateLimit = newMessageString || DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message; // Ensure message has a fallback
 
   const mongoUri = process.env.MONGODB_URI;
+  console.log(`[MongoStore Debug] MONGODB_URI: ${mongoUri ? '****** (defined)' : 'undefined'}`);
+
   if (mongoUri) {
-    // Recreate store if it doesn't exist or if windowMs has changed, as expireTimeMs depends on it.
     if (!rateLimitStore || (rateLimitStore as any).options?.expireTimeMs !== currentWindowMsRateLimit) {
         if (rateLimitStore) {
             console.log(`[RateLimit Store] Recreating MongoStore due to configuration change. Old expireTimeMs: ${(rateLimitStore as any).options?.expireTimeMs}, New: ${currentWindowMsRateLimit}`);
         } else {
-            console.log(`[RateLimit Store] Creating MongoStore. ExpireTimeMs: ${currentWindowMsRateLimit}`);
+            console.log(`[RateLimit Store] Attempting to create new MongoStore instance. ExpireTimeMs: ${currentWindowMsRateLimit}`);
         }
-        rateLimitStore = new MongoStore({
-            uri: mongoUri,
-            collectionName: 'apiRateLimits_discover_successful_v3', // New collection name for clarity
-            expireTimeMs: currentWindowMsRateLimit, // Entries expire after windowMs
-            errorHandler: (err: any) => {
-                console.error('[MongoStore ERROR] Error in rate-limit-mongo store:', err);
+        try {
+            rateLimitStore = new MongoStoreImport({
+                uri: mongoUri,
+                collectionName: 'apiRateLimits_discover_successful_v3',
+                expireTimeMs: currentWindowMsRateLimit,
+                errorHandler: (err: any) => {
+                    console.error('[MongoStore RUNTIME ERROR] Error reported by rate-limit-mongo store:', err);
+                }
+            });
+            if (rateLimitStore) {
+                console.log(`[MongoStore Debug] MongoStore instance CREATED successfully.`);
+                console.log(`[MongoStore Debug] typeof rateLimitStore.get: ${typeof (rateLimitStore as any).get}`);
+                console.log(`[MongoStore Debug] typeof rateLimitStore.increment: ${typeof (rateLimitStore as any).increment}`);
+                console.log(`[MongoStore Debug] rateLimitStore instanceof MongoStoreImport: ${rateLimitStore instanceof MongoStoreImport}`);
+                console.log(`[MongoStore Debug] rateLimitStore.constructor.name: ${rateLimitStore.constructor?.name}`);
+            } else {
+                console.error('[MongoStore Debug] MongoStore instantiation returned null or undefined.');
             }
-        });
-        console.log(`[RateLimit Store] MongoStore configured for successful discovery requests. Collection: apiRateLimits_discover_successful_v3, Window: ${currentWindowMsRateLimit}ms`);
+        } catch (constructorError) {
+            console.error('[MongoStore Debug] CRITICAL ERROR during MongoStoreImport instantiation:', constructorError);
+            rateLimitStore = undefined; // Ensure it's undefined if construction fails
+        }
+        console.log(`[RateLimit Store] MongoStore configuration attempt finished. Current rateLimitStore defined: ${!!rateLimitStore}`);
+    } else {
+        console.log(`[RateLimit Store] MongoStore instance already exists and configuration (expireTimeMs) has not changed. Skipping recreation.`);
     }
   } else {
     rateLimitStore = undefined;
-    console.warn('[RateLimit Store] MONGODB_URI not defined. Persistent rate limiting for successful requests disabled.');
+    console.warn('[RateLimit Store] MONGODB_URI not defined. Persistent rate limiting for successful requests disabled. rateLimitStore is undefined.');
   }
   console.log(`[RateLimit Config] Rate limit for successful /discover responses: Max ${currentMaxRateLimit} per ${currentWindowMsRateLimit / 1000}s. Message: "${currentMessageRateLimit}"`);
+  console.log('[MongoStore Debug] Exiting updateDiscoverLimiter function.');
 }
 
 // Initial calls to load settings at startup
@@ -280,7 +309,7 @@ console.log('[userProfile-ts.ts] Setting up initial calls to updaters...');
 
 router.get('/discover', protect, async (req: AuthRequest, res: Response, next: NextFunction) => {
   const requestTimestampStart = new Date().toISOString();
-  const authReq = req as AuthRequest; // Already cast in signature
+  const authReq = req as AuthRequest;
   const rateLimitKey = authReq.user?._id?.toString() || authReq.ip;
 
   console.log(`[${requestTimestampStart}] [DISCOVER REQ START] UserID: ${authReq.user?._id}, IP: ${authReq.ip}, Key: ${rateLimitKey}, Page: ${req.query.page}`);
@@ -288,7 +317,8 @@ router.get('/discover', protect, async (req: AuthRequest, res: Response, next: N
   try {
     // Manual Rate Limiting for successful responses
     if (rateLimitStore && currentMaxRateLimit > 0) {
-      const storeResult = await rateLimitStore.get(rateLimitKey);
+      console.log(`[DISCOVER RATE CHECK] Proceeding with rateLimitStore. typeof .get: ${typeof (rateLimitStore as any).get}, typeof .increment: ${typeof (rateLimitStore as any).increment}`);
+      const storeResult = await rateLimitStore.get(rateLimitKey); // This is where the error occurred
       const currentHits = storeResult ? storeResult.totalHits : 0;
       const resetTime = storeResult ? storeResult.resetTime : undefined;
 
