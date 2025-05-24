@@ -163,8 +163,13 @@ const DISCOVER_RATE_LIMIT_KEY = 'discoverRateLimit';
 const PROFILES_PER_PAGE_KEY = 'discoverProfilesPerPage'; // Key for profiles per page setting
 const DEFAULT_PROFILES_PER_PAGE = 5; // Default profiles per page
 
-let discoverLimiterInstance: ReturnType<typeof rateLimit>; 
 let currentProfilesPerPage: number = DEFAULT_PROFILES_PER_PAGE; // Global variable for profiles per page
+
+// New module-level variables for rate limiting parameters and store
+let currentWindowMsRateLimit: number = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs;
+let currentMaxRateLimit: number = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.max;
+let currentMessageRateLimit: string = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
+let rateLimitStore: MongoStore | undefined;
 
 // Function to update the "profiles per page" setting from DB
 export async function updateProfilesPerPageSetting() {
@@ -195,27 +200,27 @@ export async function updateProfilesPerPageSetting() {
 
 // Function to update the rate limiter settings from DB
 export async function updateDiscoverLimiter() {
-  let currentWindowMs = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs;
-  let currentMax = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.max;
-  let currentMessageString = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
+  // Use module-level variables, update them from DB or defaults
+  let newWindowMs = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs;
+  let newMax = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.max;
+  let newMessageString = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
 
   try {
     console.log(`[RateLimit UPDATE] Attempting to find AppSetting with key: ${DISCOVER_RATE_LIMIT_KEY}`);
     const dbSetting = await AppSetting.findOne({ key: DISCOVER_RATE_LIMIT_KEY });
     if (dbSetting) {
       console.log(`[RateLimit UPDATE] Found DB setting. Value:`, JSON.stringify(dbSetting.value, null, 2));
-      // Expecting rate limit setting to be { value: { windowMs: NUMBER, max: NUMBER, message: STRING } }
       if (dbSetting.value && typeof dbSetting.value.windowMs === 'number' && typeof dbSetting.value.max === 'number') {
-        currentWindowMs = dbSetting.value.windowMs;
-        currentMax = dbSetting.value.max;
+        newWindowMs = dbSetting.value.windowMs;
+        newMax = dbSetting.value.max;
         if (dbSetting.value.message && typeof dbSetting.value.message === 'string') {
-          currentMessageString = dbSetting.value.message;
-        } else { // Removed complex message object handling for simplicity from default
+          newMessageString = dbSetting.value.message;
+        } else {
           console.log(`[RateLimit UPDATE] DB setting for message is missing or not a string, using default message string.`);
         }
-        console.log(`[RateLimit UPDATE] Successfully applied DB config for /discover: ${currentMax} req / ${currentWindowMs / 1000}s. Message string: "${currentMessageString}"`);
+        console.log(`[RateLimit UPDATE] Successfully read DB config for /discover: ${newMax} successful req / ${newWindowMs / 1000}s. Message string: "${newMessageString}"`);
       } else {
-        console.log(`[RateLimit UPDATE] DB setting found but 'value' or 'windowMs'/'max' fields are invalid or not numbers. Using defaults.`);
+        console.log(`[RateLimit UPDATE] DB setting found but 'value' or 'windowMs'/'max' fields are invalid. Using defaults.`);
       }
     } else {
       console.log(`[RateLimit UPDATE] No DB config found for key '${DISCOVER_RATE_LIMIT_KEY}'. Using defaults.`);
@@ -223,51 +228,35 @@ export async function updateDiscoverLimiter() {
   } catch (error) {
     console.error('[RateLimit UPDATE] Error fetching discover rate limit settings from DB, using defaults:', error);
   }
-  // Ensure defaults are used if any part of DB loading fails for rate limit message
-  if (!currentMessageString) currentMessageString = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
 
+  currentWindowMsRateLimit = newWindowMs;
+  currentMaxRateLimit = newMax;
+  currentMessageRateLimit = newMessageString || DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message; // Ensure message has a fallback
 
   const mongoUri = process.env.MONGODB_URI;
-  let store;
-
   if (mongoUri) {
-    console.log(`[RateLimit Instantiation] Using MongoStore for rate limiting. Collection: apiRateLimits_discover_v2`);
-    store = new MongoStore({
-      uri: mongoUri,
-      collectionName: 'apiRateLimits_discover_v2', 
-      expireTimeMs: currentWindowMs, 
-      errorHandler: (err: any) => { 
-        console.error('[MongoStore ERROR] Error in rate-limit-mongo store:', err);
-      }
-    });
+    // Recreate store if it doesn't exist or if windowMs has changed, as expireTimeMs depends on it.
+    if (!rateLimitStore || (rateLimitStore as any).options?.expireTimeMs !== currentWindowMsRateLimit) {
+        if (rateLimitStore) {
+            console.log(`[RateLimit Store] Recreating MongoStore due to configuration change. Old expireTimeMs: ${(rateLimitStore as any).options?.expireTimeMs}, New: ${currentWindowMsRateLimit}`);
+        } else {
+            console.log(`[RateLimit Store] Creating MongoStore. ExpireTimeMs: ${currentWindowMsRateLimit}`);
+        }
+        rateLimitStore = new MongoStore({
+            uri: mongoUri,
+            collectionName: 'apiRateLimits_discover_successful_v3', // New collection name for clarity
+            expireTimeMs: currentWindowMsRateLimit, // Entries expire after windowMs
+            errorHandler: (err: any) => {
+                console.error('[MongoStore ERROR] Error in rate-limit-mongo store:', err);
+            }
+        });
+        console.log(`[RateLimit Store] MongoStore configured for successful discovery requests. Collection: apiRateLimits_discover_successful_v3, Window: ${currentWindowMsRateLimit}ms`);
+    }
   } else {
-    console.warn('[RateLimit Instantiation] MONGODB_URI not defined. Falling back to MemoryStore for rate limiting. This is not recommended for production.');
+    rateLimitStore = undefined;
+    console.warn('[RateLimit Store] MONGODB_URI not defined. Persistent rate limiting for successful requests disabled.');
   }
-  
-  console.log(`[RateLimit Instantiation] Creating new rateLimit instance with: max=${currentMax}, windowMs=${currentWindowMs}`);
-  discoverLimiterInstance = rateLimit({
-    store: store, 
-    windowMs: currentWindowMs,
-    max: currentMax,
-    message: { success: false, message: currentMessageString }, 
-    keyGenerator: (req: Request) => {
-      const authReq = req as AuthRequest;
-      const key = authReq.user?._id?.toString() || req.ip;
-      return key;
-    },
-    handler: (req: Request, res: Response, next: NextFunction, optionsUsed: any) => {
-      const authReq = req as AuthRequest; 
-      const key = authReq.user?._id?.toString() || authReq.ip;
-      const messagePayload = (typeof optionsUsed.message === 'object' && optionsUsed.message !== null)
-                             ? optionsUsed.message
-                             : { success: false, message: 'Too many requests, please try again later.' }; 
-
-      console.log(`[RATE LIMIT EXCEEDED HANDLER] For /discover. Key: ${key}. UserID: ${authReq.user?._id}, IP: ${authReq.ip}. Max: ${optionsUsed.max}. WindowMs: ${optionsUsed.windowMs}.`);
-      res.status(optionsUsed.statusCode || 429).json(messagePayload);
-    },
-    standardHeaders: true, 
-    legacyHeaders: false, 
-  });
+  console.log(`[RateLimit Config] Rate limit for successful /discover responses: Max ${currentMaxRateLimit} per ${currentWindowMsRateLimit / 1000}s. Message: "${currentMessageRateLimit}"`);
 }
 
 // Initial calls to load settings at startup
@@ -289,43 +278,48 @@ console.log('[userProfile-ts.ts] Setting up initial calls to updaters...');
   }
 })();
 
-router.get('/discover', protect, (req: Request, res: Response, next: NextFunction) => { 
-  const authReq = req as AuthRequest; 
-  const key = authReq.user?._id?.toString() || authReq.ip;
-  const requestTimestamp = new Date().toISOString();
-  console.log(`[${requestTimestamp}] [RATE LIMITER PRE-INVOKE] For /discover. Key: ${key}. UserID: ${authReq.user?._id}, IP: ${authReq.ip}`);
-  
-  if (discoverLimiterInstance) {
-    discoverLimiterInstance(req, res, (err?: any) => { 
-      const afterTimestamp = new Date().toISOString();
-      if (err) {
-        console.error(`[${afterTimestamp}] [RATE LIMITER ERROR] Error from discoverLimiterInstance:`, err);
-        return next(err); 
-      }
-      if (!res.headersSent) {
-        console.log(`[${afterTimestamp}] [RATE LIMITER POST-INVOKE] Passed for /discover. Key: ${key}. Proceeding to main handler.`);
-        next();
-      } else {
-        console.log(`[${afterTimestamp}] [RATE LIMITER POST-INVOKE] Response already sent for /discover (likely 429). Key: ${key}. Status: ${res.statusCode}`);
-      }
-    });
-  } else {
-    console.error(`[${new Date().toISOString()}] [RATE LIMITER CRITICAL] discoverLimiterInstance is undefined! Bypassing rate limit.`);
-    next(); 
-  }
-}, async (req: AuthRequest, res: Response) => {
+router.get('/discover', protect, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  const requestTimestampStart = new Date().toISOString();
+  const authReq = req as AuthRequest; // Already cast in signature
+  const rateLimitKey = authReq.user?._id?.toString() || authReq.ip;
+
+  console.log(`[${requestTimestampStart}] [DISCOVER REQ START] UserID: ${authReq.user?._id}, IP: ${authReq.ip}, Key: ${rateLimitKey}, Page: ${req.query.page}`);
+
   try {
+    // Manual Rate Limiting for successful responses
+    if (rateLimitStore && currentMaxRateLimit > 0) {
+      const storeResult = await rateLimitStore.get(rateLimitKey);
+      const currentHits = storeResult ? storeResult.totalHits : 0;
+      const resetTime = storeResult ? storeResult.resetTime : undefined;
+
+      console.log(`[${new Date().toISOString()}] [DISCOVER RATE CHECK] Key: ${rateLimitKey}, Hits: ${currentHits}, Max: ${currentMaxRateLimit}, ResetTime: ${resetTime?.toISOString()}`);
+
+      if (currentHits >= currentMaxRateLimit) {
+        console.warn(`[${new Date().toISOString()}] [DISCOVER RATE LIMIT EXCEEDED] Key: ${rateLimitKey}, UserID: ${authReq.user?._id}, IP: ${authReq.ip}. Hits: ${currentHits}. Max: ${currentMaxRateLimit}.`);
+        return res.status(429).json({
+          success: false,
+          message: currentMessageRateLimit,
+          details: {
+            reason: "Rate limit for successful discovery requests exceeded.",
+            currentHits: currentHits,
+            limit: currentMaxRateLimit,
+            resetTime: resetTime?.toISOString(),
+            windowMs: currentWindowMsRateLimit
+          }
+        });
+      }
+    }
+
     const page = parseInt(req.query.page as string) || 1;
-    // Use the globally set currentProfilesPerPage, which is loaded from DB or defaults
-    const queryLimit = currentProfilesPerPage; 
+    const queryLimit = currentProfilesPerPage;
     const skip = (page - 1) * queryLimit;
 
-    console.log(`[${new Date().toISOString()}] [DISCOVER HANDLER] Entered main handler for /discover. UserID: ${req.user?._id}. Page: ${page}, Return Limit (from DB/default): ${queryLimit}`);
-    
-    if (!req.user || !req.user._id) {
+    console.log(`[${new Date().toISOString()}] [DISCOVER HANDLER] Processing. UserID: ${authReq.user?._id}. Page: ${page}, Limit: ${queryLimit}`);
+
+    if (!authReq.user || !authReq.user._id) {
       return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
     }
-    const currentUser = await User.findById(req.user._id);
+    const currentUser = await User.findById(authReq.user._id);
     if (!currentUser) {
       return res.status(404).json({ success: false, message: 'Current user not found' });
     }
@@ -448,6 +442,21 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
       console.log(`[DISCOVER PROFILES] Updated viewedProfiles for User ID: ${currentUser._id}. Added ${newViewedProfileIds.length} profiles.`);
     }
 
+    // ... (rest of the existing logic to fetch and format profiles) ...
+    // Ensure currentUser, query, potentialMatches, formattedUsers logic remains the same
+
+    // If successful response is to be sent (formattedUsers created):
+    if (rateLimitStore && currentMaxRateLimit > 0) {
+      try {
+        const incrementResult = await rateLimitStore.increment(rateLimitKey);
+        console.log(`[${new Date().toISOString()}] [DISCOVER RATE INCREMENT] Successful request. Key: ${rateLimitKey}, UserID: ${authReq.user?._id}. New Hits: ${incrementResult?.totalHits}, ResetTime: ${incrementResult?.resetTime?.toISOString()}`);
+      } catch (incrementError) {
+        console.error(`[${new Date().toISOString()}] [DISCOVER RATE INCREMENT FAILED] Key: ${rateLimitKey}. Error:`, incrementError);
+        // Non-fatal, log and continue sending response
+      }
+    }
+
+    console.log(`[${new Date().toISOString()}] [DISCOVER REQ SUCCESS] UserID: ${authReq.user?._id}. Responding with ${formattedUsers.length} profiles.`);
     return res.json({
       success: true,
       profiles: formattedUsers,
@@ -458,11 +467,17 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
         limit: queryLimit
       }
     });
-    
+
   } catch (error: unknown) {
-    console.error('Discover profiles error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    res.status(500).json({ success: false, message: 'Server error', error: errorMessage });
+    const errorTimestamp = new Date().toISOString();
+    console.error(`[${errorTimestamp}] [DISCOVER REQ ERROR] UserID: ${authReq.user?._id}, IP: ${authReq.ip}. Error:`, error);
+    // Pass to the main error handler for consistent error response
+    // Make sure 'next' is available in the function signature if you want to use it.
+    // For now, sending a generic error response directly.
+    const errorMessage = error instanceof Error ? error.message : 'Unknown server error during discovery';
+    if (!res.headersSent) {
+        res.status(500).json({ success: false, message: 'Server error processing discovery request', error: errorMessage });
+    }
   }
 });
 
