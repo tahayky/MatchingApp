@@ -333,6 +333,7 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
     currentUser.preferences = currentUser.preferences || { ageRange: {min: 18, max: 100}, distance: 50};
     currentUser.rejected = currentUser.rejected || [];
     currentUser.likedBy = currentUser.likedBy || [];
+    currentUser.viewedProfiles = currentUser.viewedProfiles || [];
 
     const interestedInGenders = currentUser.interestedIn || [];
     const query: mongoose.FilterQuery<IUser> = {
@@ -383,6 +384,15 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
         }
     });
 
+    // Add viewed profiles to the exclusion list
+    if (currentUser.viewedProfiles && currentUser.viewedProfiles.length > 0) {
+      currentUser.viewedProfiles.forEach((profileId: mongoose.Types.ObjectId) => {
+        if (profileId && !usersToExclude.find(id => id.equals(profileId))) {
+          usersToExclude.push(profileId);
+        }
+      });
+    }
+
     if (usersToExclude.length > 0) {
       query._id = {
           $nin: usersToExclude.filter(id => mongoose.Types.ObjectId.isValid(id)),
@@ -422,8 +432,24 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
         interests: u.interests, occupation: u.occupation, education: u.education,
       };
     });
-    return res.json({ 
-      success: true, 
+
+    // Add fetched profiles to currentUser's viewedProfiles
+    const newViewedProfileIds = potentialMatches.map(p => p._id);
+    let updatedViewedProfiles = false;
+    newViewedProfileIds.forEach(profileId => {
+      if (!currentUser.viewedProfiles.find(vpId => vpId.equals(profileId))) {
+        currentUser.viewedProfiles.push(profileId);
+        updatedViewedProfiles = true;
+      }
+    });
+
+    if (updatedViewedProfiles) {
+      await currentUser.save();
+      console.log(`[DISCOVER PROFILES] Updated viewedProfiles for User ID: ${currentUser._id}. Added ${newViewedProfileIds.length} profiles.`);
+    }
+
+    return res.json({
+      success: true,
       profiles: formattedUsers,
       pagination: {
         currentPage: page,

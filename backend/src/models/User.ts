@@ -62,6 +62,7 @@ export interface IUser extends Document {
   preferences?: IPreferences;
   likedBy: ILikeData[]; // Users who liked this user
   rejected: IRejectData[]; // Users this user has rejected/passed
+  viewedProfiles: mongoose.Types.ObjectId[]; // Users this user has seen
   lastActive: Date;
 
   // Subscription and quota fields
@@ -145,6 +146,10 @@ const UserSchema: Schema = new Schema({
   rejected: [{
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Changed from Profile to User
     rejectedAt: { type: Date, default: Date.now }
+  }],
+  viewedProfiles: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   }],
   lastActive: { type: Date, default: Date.now },
 
