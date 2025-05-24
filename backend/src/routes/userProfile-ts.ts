@@ -1,7 +1,7 @@
 console.log('[userProfile-ts.ts] Module loading...');
 import express, { Request, Response, Router, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
-import MongoStore from 'rate-limit-mongo';
+import MongoStore = require('rate-limit-mongo');
 import AppSetting from '../models/AppSetting';
 import mongoose from 'mongoose';
 import multer from 'multer';
@@ -169,7 +169,7 @@ let currentProfilesPerPage: number = DEFAULT_PROFILES_PER_PAGE; // Global variab
 let currentWindowMsRateLimit: number = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs;
 let currentMaxRateLimit: number = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.max;
 let currentMessageRateLimit: string = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
-let rateLimitStore: MongoStore | undefined;
+let rateLimitStore: InstanceType<typeof MongoStore> | undefined;
 
 // Function to update the "profiles per page" setting from DB
 export async function updateProfilesPerPageSetting() {
