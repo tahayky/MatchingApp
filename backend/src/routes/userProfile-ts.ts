@@ -1,7 +1,7 @@
 console.log('[userProfile-ts.ts] Module loading...');
 import express, { Request, Response, Router, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
-import MongoStoreImport = require('rate-limit-mongo'); // Renamed to avoid potential global type conflicts and for clarity in logs
+import MongoStoreImport = require('rate-limit-mongo'); // Reverted to require import
 import AppSetting from '../models/AppSetting';
 import mongoose from 'mongoose';
 import multer from 'multer';
@@ -169,7 +169,7 @@ let currentProfilesPerPage: number = DEFAULT_PROFILES_PER_PAGE; // Global variab
 let currentWindowMsRateLimit: number = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs;
 let currentMaxRateLimit: number = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.max;
 let currentMessageRateLimit: string = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
-let rateLimitStore: InstanceType<typeof MongoStoreImport> | undefined;
+let rateLimitStore: any | undefined; // Using any to bypass TS type error for now
 
 // Function to update the "profiles per page" setting from DB
 export async function updateProfilesPerPageSetting() {
@@ -201,6 +201,7 @@ export async function updateProfilesPerPageSetting() {
 // Function to update the rate limiter settings from DB
 export async function updateDiscoverLimiter() {
   console.log('[MongoStore Debug] Entered updateDiscoverLimiter function.');
+  // Logging for MongoStoreImport
   console.log(`[MongoStore Debug] typeof MongoStoreImport: ${typeof MongoStoreImport}`);
   if (typeof MongoStoreImport === 'function') {
       console.log(`[MongoStore Debug] MongoStoreImport.name (constructor name): ${MongoStoreImport.name}`);
@@ -255,6 +256,7 @@ export async function updateDiscoverLimiter() {
             console.log(`[RateLimit Store] Attempting to create new MongoStore instance. ExpireTimeMs: ${currentWindowMsRateLimit}`);
         }
         try {
+            // Instantiation using MongoStoreImport
             rateLimitStore = new MongoStoreImport({
                 uri: mongoUri,
                 collectionName: 'apiRateLimits_discover_successful_v3',
@@ -264,13 +266,15 @@ export async function updateDiscoverLimiter() {
                 }
             });
             if (rateLimitStore) {
-                console.log(`[MongoStore Debug] MongoStore instance CREATED successfully.`);
+                console.log(`[MongoStore Debug] MongoStore instance CREATED successfully using 'new MongoStoreImport(...)'.`);
                 console.log(`[MongoStore Debug] typeof rateLimitStore.get: ${typeof (rateLimitStore as any).get}`);
                 console.log(`[MongoStore Debug] typeof rateLimitStore.increment: ${typeof (rateLimitStore as any).increment}`);
-                console.log(`[MongoStore Debug] rateLimitStore instanceof MongoStoreImport: ${rateLimitStore instanceof MongoStoreImport}`);
+                if (typeof MongoStoreImport === 'function') {
+                     console.log(`[MongoStore Debug] rateLimitStore instanceof MongoStoreImport: ${rateLimitStore instanceof MongoStoreImport}`);
+                }
                 console.log(`[MongoStore Debug] rateLimitStore.constructor.name: ${rateLimitStore.constructor?.name}`);
             } else {
-                console.error('[MongoStore Debug] MongoStore instantiation returned null or undefined.');
+                console.error('[MongoStore Debug] MongoStoreImport instantiation returned null or undefined.');
             }
         } catch (constructorError) {
             console.error('[MongoStore Debug] CRITICAL ERROR during MongoStoreImport instantiation:', constructorError);
