@@ -239,7 +239,10 @@ export async function updateDiscoverLimiter() {
   if (!redisClient && redisUrl) {
     try {
       console.log(`[RateLimiter Setup with Redis] Attempting to create Redis client with URL: ${redisUrl}`);
-      const client = createClient({ url: redisUrl });
+      const client = createClient({
+        url: redisUrl,
+        disableClientInfo: true // Add this option for Upstash compatibility
+      });
       
       client.on('error', (err) => {
         console.error('[RateLimiter Setup with Redis] Redis Client Error:', err);
