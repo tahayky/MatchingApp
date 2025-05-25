@@ -222,10 +222,12 @@ const profileService = {
       return response.data; // This should now include the pagination object from backend
     } catch (error: any) {
       console.log('Error discovering profiles:', error.message);
-      // If error has a response (e.g. 429 from rate limit), rethrow it so component can see status
+      // If error has a response (e.g. 429 from rate limit), log headers and rethrow
       if (error.response) {
-          console.log('Error response from server:', error.response.data);
-          throw error; 
+          console.log('Error response status from server:', error.response.status);
+          console.log('Error response headers from server:', JSON.stringify(error.response.headers, null, 2));
+          console.log('Error response data from server:', error.response.data);
+          throw error;
       }
       return { success: false, profiles: [], message: error.message || 'Error discovering profiles', pagination: undefined };
     }

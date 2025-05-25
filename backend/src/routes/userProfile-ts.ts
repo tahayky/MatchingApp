@@ -1,7 +1,8 @@
 console.log('[userProfile-ts.ts] Module loading...');
 import express, { Request, Response, Router, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
-import MongoStoreImport = require('rate-limit-mongo'); // Reverted to require import
+import { RedisStore } from 'rate-limit-redis';
+import { createClient, RedisClientType } from 'redis';
 import AppSetting from '../models/AppSetting';
 import mongoose from 'mongoose';
 import multer from 'multer';
@@ -170,7 +171,8 @@ let currentWindowMsRateLimit: number = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.window
 let currentMaxRateLimit: number = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.max;
 let currentMessageRateLimit: string = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
 let discoverLimiterInstance: ReturnType<typeof rateLimit> | undefined; // To hold the rate-limit middleware
-let mongoStoreInstanceForRateLimit: any | undefined; // To hold the MongoStore instance
+let redisClient: RedisClientType | undefined;
+let redisStoreInstance: RedisStore | undefined;
 
 // Function to update the "profiles per page" setting from DB
 export async function updateProfilesPerPageSetting() {
@@ -201,7 +203,7 @@ export async function updateProfilesPerPageSetting() {
 
 // Function to update the rate limiter settings from DB
 export async function updateDiscoverLimiter() {
-  console.log('[RateLimiter Setup] Entered updateDiscoverLimiter function.');
+  console.log('[RateLimiter Setup with Redis] Entered updateDiscoverLimiter function.');
 
   let newWindowMs = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.windowMs;
   let newMax = DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.max;
@@ -233,33 +235,47 @@ export async function updateDiscoverLimiter() {
   currentMaxRateLimit = newMax;
   currentMessageRateLimit = newMessageString || DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
 
-  const mongoUri = process.env.MONGODB_URI;
-  if (mongoUri) {
-    // Recreate store if it doesn't exist or if windowMs has changed
-    if (!mongoStoreInstanceForRateLimit || (mongoStoreInstanceForRateLimit as any).options?.expireTimeMs !== currentWindowMsRateLimit) {
-      console.log(`[RateLimiter Setup] Creating/Recreating MongoStore instance. ExpireTimeMs: ${currentWindowMsRateLimit}`);
-      try {
-        mongoStoreInstanceForRateLimit = new MongoStoreImport({
-          uri: mongoUri,
-          collectionName: 'apiRateLimits_discover_v4', // Changed collection name for fresh start
-          expireTimeMs: currentWindowMsRateLimit,
-          errorHandler: (err: any) => {
-            console.error('[MongoStore RUNTIME ERROR] Error reported by rate-limit-mongo store:', err);
-          }
-        });
-        console.log(`[RateLimiter Setup] MongoStore instance for rate limiting CREATED successfully.`);
-      } catch (storeError) {
-        console.error('[RateLimiter Setup] CRITICAL ERROR during MongoStoreImport instantiation:', storeError);
-        mongoStoreInstanceForRateLimit = undefined;
-      }
-    } else {
-        console.log(`[RateLimiter Setup] MongoStore instance already exists and configuration (expireTimeMs) has not changed.`);
-    }
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisClient && redisUrl) {
+    try {
+      console.log(`[RateLimiter Setup with Redis] Attempting to create Redis client with URL: ${redisUrl}`);
+      const client = createClient({ url: redisUrl });
+      
+      client.on('error', (err) => {
+        console.error('[RateLimiter Setup with Redis] Redis Client Error:', err);
+        redisClient = undefined; // Ensure client is marked as unusable
+        redisStoreInstance = undefined;
+        discoverLimiterInstance = undefined; // Also disable limiter if Redis fails
+      });
 
-    if (mongoStoreInstanceForRateLimit) {
-      console.log(`[RateLimiter Setup] Creating new express-rate-limit middleware instance.`);
-      discoverLimiterInstance = rateLimit({
-        store: mongoStoreInstanceForRateLimit,
+      await client.connect();
+      console.log('[RateLimiter Setup with Redis] Redis client connected successfully.');
+      redisClient = client as RedisClientType; // Cast to RedisClientType after connect
+      
+      // Create RedisStore instance
+      // The 'sendCommand' option is crucial for compatibility with redis v4+
+      redisStoreInstance = new RedisStore({
+        sendCommand: (...args: string[]) => redisClient!.sendCommand(args),
+        prefix: 'rlDiscover:', // Optional prefix for keys in Redis
+      });
+      console.log('[RateLimiter Setup with Redis] RedisStore instance CREATED successfully.');
+
+    } catch (err) {
+      console.error('[RateLimiter Setup with Redis] Failed to connect to Redis or create store:', err);
+      redisClient = undefined;
+      redisStoreInstance = undefined;
+    }
+  } else if (!redisUrl) {
+    console.warn('[RateLimiter Setup with Redis] REDIS_URL not defined. Rate limiting will be bypassed or use memory store.');
+    redisClient = undefined;
+    redisStoreInstance = undefined;
+  }
+
+
+  if (redisStoreInstance) {
+    console.log(`[RateLimiter Setup with Redis] Creating/Updating express-rate-limit middleware instance with RedisStore.`);
+    discoverLimiterInstance = rateLimit({
+        store: redisStoreInstance,
         windowMs: currentWindowMsRateLimit,
         max: currentMaxRateLimit, // Max number of successful requests
         message: { success: false, message: currentMessageRateLimit },
@@ -268,25 +284,29 @@ export async function updateDiscoverLimiter() {
           const authReq = req as AuthRequest;
           return authReq.user?._id?.toString() || authReq.ip;
         },
-        handler: (req: Request, res: Response, next: NextFunction, optionsUsed: any) => {
+        handler: (req: Request, res: Response, next: NextFunction, optionsUsed: any) => { // No need for async here if not awaiting store.resetTime
           const authReq = req as AuthRequest;
-          console.warn(`[RATE LIMIT EXCEEDED] For /discover. Key: ${authReq.user?._id?.toString() || authReq.ip}. Max successful: ${optionsUsed.max}. Window: ${optionsUsed.windowMs / 1000}s.`);
+          const key = authReq.user?._id?.toString() || authReq.ip;
+          
+          // optionsUsed.resetTime should be the Date object for when the limit will be reset
+          const calculatedResetTime = optionsUsed.resetTime instanceof Date ? optionsUsed.resetTime.toISOString() : 'options.resetTime not a Date object or not available';
+
+          console.warn(
+            `[RATE LIMIT EXCEEDED with Redis] For /discover. Key: ${key}. Max successful: ${optionsUsed.max}. Window: ${optionsUsed.windowMs / 1000}s. ` +
+            `Calculated ResetTime (by express-rate-limit): ${calculatedResetTime}.`
+          );
+          // The store.resetTime method might not be standard or needed if express-rate-limit handles it with Redis's native TTL
           res.status(optionsUsed.statusCode || 429).json(optionsUsed.message);
         },
         standardHeaders: true,
         legacyHeaders: false,
       });
-      console.log(`[RateLimiter Setup] express-rate-limit middleware configured to count successful requests. Max: ${currentMaxRateLimit}, Window: ${currentWindowMsRateLimit / 1000}s.`);
-    } else {
-      console.error('[RateLimiter Setup] MongoStore instance is not available. Rate limiting will be bypassed.');
-      discoverLimiterInstance = undefined;
-    }
+    console.log(`[RateLimiter Setup with Redis] express-rate-limit middleware configured with RedisStore. Max: ${currentMaxRateLimit}, Window: ${currentWindowMsRateLimit / 1000}s.`);
   } else {
-    console.warn('[RateLimiter Setup] MONGODB_URI not defined. Rate limiting will be bypassed.');
-    mongoStoreInstanceForRateLimit = undefined;
+    console.error('[RateLimiter Setup with Redis] RedisStore instance is not available. Rate limiting will be bypassed.');
     discoverLimiterInstance = undefined;
   }
-  console.log('[RateLimiter Setup] Exiting updateDiscoverLimiter function.');
+  console.log('[RateLimiter Setup with Redis] Exiting updateDiscoverLimiter function.');
 }
 
 // Initial calls to load settings at startup
