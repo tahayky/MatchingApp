@@ -350,9 +350,8 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
   try {
     const page = parseInt(req.query.page as string) || 1;
     const queryLimit = currentProfilesPerPage;
-    const skip = (page - 1) * queryLimit;
 
-    console.log(`[${new Date().toISOString()}] [DISCOVER HANDLER] Processing. UserID: ${authReq.user?._id}. Page: ${page}, Limit: ${queryLimit}, Skip: ${skip}`);
+    console.log(`[${new Date().toISOString()}] [DISCOVER HANDLER] Processing. UserID: ${authReq.user?._id}. Page: ${page}, Limit: ${queryLimit}`);
 
     if (!authReq.user || !authReq.user._id) {
       return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
@@ -395,11 +394,22 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
     // rejected listesi artık kullanılmıyor, Match tablosundan pass action'ları kontrol ediliyor
     // Hem like hem de pass edilmiş profilleri hariç tut
     const allMatches = await Match.find({ user: currentUser._id }).select('targetUser action');
+    console.log(`[DISCOVER PROFILES] Match records for user ${currentUser._id}:`);
+    
     if (allMatches.length > 0) {
+      // Debug için action'lara göre grupla
+      const likeCount = allMatches.filter(m => m.action === 'like').length;
+      const passCount = allMatches.filter(m => m.action === 'pass').length;
+      
+      console.log(`[DISCOVER PROFILES] Total matches: ${allMatches.length} (Likes: ${likeCount}, Passes: ${passCount})`);
+      
       allMatches.forEach(match => {
-        usersToExclude.push(match.targetUser);
+        if (!usersToExclude.find(id => id.equals(match.targetUser))) {
+          usersToExclude.push(match.targetUser);
+        }
       });
-      console.log(`[DISCOVER PROFILES] Found ${allMatches.length} matches (like+pass) to exclude`);
+      
+      console.log(`[DISCOVER PROFILES] Unique users to exclude: ${usersToExclude.length}`);
     }
     const existingMatches = await Match.find({
         $or: [
@@ -445,14 +455,14 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
     console.log(`[DISCOVER PROFILES] Query to MongoDB: ${JSON.stringify(query, null, 2)}`);
     console.log(`[DISCOVER PROFILES] Users to Exclude (${usersToExclude.length}): ${usersToExclude.map(id => id.toString()).join(', ')}`);
 
+    // Sadece limit kadar profil getir (skip kullanmıyoruz çünkü zaten exclude ediyoruz)
     const potentialMatches = await User.find(query)
       .select('_id name dateOfBirth gender photos bio location interests occupation education')
-      .skip(skip) 
-      .limit(queryLimit); 
+      .sort({ createdAt: -1 }) // Tutarlı sıralama için
+      .limit(queryLimit);
     
-    console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} potential matches from DB (page: ${page}, limit: ${queryLimit}, skip: ${skip}, total matching: ${totalMatchingProfiles}).`);
-    console.log(`[DISCOVER PROFILES] Excluded users count: ${usersToExclude.length}`);
-    console.log(`[DISCOVER PROFILES] Total available after exclusions: ${totalMatchingProfiles}`);
+    console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} profiles (limit: ${queryLimit})`);
+    console.log(`[DISCOVER PROFILES] These profiles are NOT in the excluded list of ${usersToExclude.length} users`);
 
     const formattedUsers = potentialMatches.map(u => {
       let age;
@@ -506,6 +516,41 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
 
 router.get('/test', (req: Request, res: Response) => {
   res.json({ message: 'Profiles test route is working!' });
+});
+
+// Debug endpoint - Match kayıtlarını kontrol et
+router.get('/debug/matches', protect, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ success: false, message: 'Not authorized' });
+    }
+    
+    const userMatches = await Match.find({ user: req.user._id }).populate('targetUser', 'name');
+    const matchedWithUser = await Match.find({ targetUser: req.user._id }).populate('user', 'name');
+    
+    res.json({
+      success: true,
+      userMatches: userMatches.length,
+      matchedWithUser: matchedWithUser.length,
+      details: {
+        myActions: userMatches.map(m => ({
+          targetUser: m.targetUser,
+          action: m.action,
+          isMatch: m.isMatch,
+          createdAt: m.createdAt
+        })),
+        othersActions: matchedWithUser.map(m => ({
+          user: m.user,
+          action: m.action,
+          isMatch: m.isMatch,
+          createdAt: m.createdAt
+        }))
+      }
+    });
+  } catch (error) {
+    console.error('Debug matches error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
 });
 
 export default router;

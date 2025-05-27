@@ -70,7 +70,7 @@ export default function HomeScreen() {
       });
 
       const response = await Promise.race([
-        profileService.discoverProfiles(targetPage, 5), 
+        profileService.discoverProfiles(targetPage), // limit parametresini kaldırdık, backend kendi ayarını kullansın
         timeoutPromise
       ]);
 

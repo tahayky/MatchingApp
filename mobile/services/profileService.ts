@@ -192,7 +192,7 @@ const profileService = {
     }
   },
 
-  async discoverProfiles(page: number = 1, limit: number = 5): Promise<DiscoverProfilesResponse> {
+  async discoverProfiles(page: number = 1, limit?: number): Promise<DiscoverProfilesResponse> {
     if (!(await isAuthenticated())) {
       return { success: false, profiles: [], message: 'Not authenticated', pagination: undefined };
     }
@@ -209,8 +209,10 @@ const profileService = {
         };
       }
 
-      console.log(`Fetching profiles from API... Page: ${page}, Limit: ${limit}`);
-      const response = await apiClient.get<DiscoverProfilesResponse>(`/users/profile/discover?page=${page}&limit=${limit}`);
+      // Limit parametresi opsiyonel, backend kendi ayarını kullansın
+      const url = limit ? `/users/profile/discover?page=${page}&limit=${limit}` : `/users/profile/discover?page=${page}`;
+      console.log(`Fetching profiles from API... URL: ${url}`);
+      const response = await apiClient.get<DiscoverProfilesResponse>(url);
       
       // Example: only cache first page for simplicity with pagination
       if (response.data.success && response.data.profiles.length > 0 && page === 1) { 
