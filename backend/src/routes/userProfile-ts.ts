@@ -465,20 +465,9 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
       };
     });
 
-    // Add fetched profiles to currentUser's viewedProfiles
-    const newViewedProfileIds = potentialMatches.map(p => p._id);
-    let updatedViewedProfiles = false;
-    newViewedProfileIds.forEach(profileId => {
-      if (!currentUser.viewedProfiles.find(vpId => vpId.equals(profileId))) {
-        currentUser.viewedProfiles.push(profileId);
-        updatedViewedProfiles = true;
-      }
-    });
-
-    if (updatedViewedProfiles) {
-      await currentUser.save();
-      console.log(`[DISCOVER PROFILES] Updated viewedProfiles for User ID: ${currentUser._id}. Added ${newViewedProfileIds.length} profiles.`);
-    }
+    // viewedProfiles'a ekleme YAPILMAYACAK - sadece swipe edilenler matches-ts.ts'de eklenecek
+    // Bu sayede pagination düzgün çalışacak ve "profil kalmadı" hatası düzelecek
+    console.log(`[DISCOVER PROFILES] Returned ${potentialMatches.length} profiles. viewedProfiles NOT updated here.`);
 
     // Removed manual rate limit increment logic.
     // express-rate-limit with skipFailedRequests: true will handle counting successful (2xx) responses.

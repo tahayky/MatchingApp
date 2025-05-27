@@ -275,6 +275,14 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
       }
     }
 
+    // Add to viewedProfiles for both like and pass actions
+    currentUser.viewedProfiles = currentUser.viewedProfiles || [];
+    if (!currentUser.viewedProfiles.some(id => id.toString() === targetUser._id.toString())) {
+      currentUser.viewedProfiles.push(targetUser._id);
+      await currentUser.save();
+      console.log(`[ACTION] Added ${targetUser._id} to viewedProfiles for user ${currentUser._id} after ${action} action`);
+    }
+
     if (action === 'like') {
       try {
         const result = await axios.post('http://localhost:3000/api/subscription/consume-like', {}, {
