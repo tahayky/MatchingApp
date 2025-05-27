@@ -260,13 +260,20 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
         }
       }
     } else if (action === 'pass') {
-      // Pass action'ı zaten Match tablosunda tutuluyor
-      // rejected listesine eklemeye gerek yok
-      console.log(`[ACTION] Pass action recorded in Match table for user ${currentUser._id} on target ${targetUser._id}`);
-    }
+      // Record the rejection in the current user's rejected list
+      currentUser.rejected = currentUser.rejected || [];
+      const alreadyRejected = currentUser.rejected.some(
+        (rejection: IRejectData) => rejection.user && rejection.user.toString() === targetUser._id.toString()
+      );
 
-    // viewedProfiles artık kullanılmıyor - sadece rejected ve liked profiller takip ediliyor
-    // Bu sayede kullanıcı aynı profili birden fazla kez görebilir ama swipe ettiklerini görmez
+      if (!alreadyRejected) {
+        currentUser.rejected.push({
+          user: targetUser._id, // Target user was rejected by current user
+          rejectedAt: new Date()
+        } as IRejectData);
+        await currentUser.save();
+      }
+    }
 
     if (action === 'like') {
       try {
