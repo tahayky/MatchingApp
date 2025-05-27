@@ -416,14 +416,10 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
         }
     });
 
-    // Add viewed profiles to the exclusion list
-    if (currentUser.viewedProfiles && currentUser.viewedProfiles.length > 0) {
-      currentUser.viewedProfiles.forEach((profileId: mongoose.Types.ObjectId) => {
-        if (profileId && !usersToExclude.find(id => id.equals(profileId))) {
-          usersToExclude.push(profileId);
-        }
-      });
-    }
+    // viewedProfiles artık discover'da filtreleme için KULLANILMAYACAK
+    // Sadece swipe edilenler (liked/rejected) hariç tutulacak
+    // Bu sayede pagination düzgün çalışacak
+    console.log(`[DISCOVER PROFILES] viewedProfiles count: ${currentUser.viewedProfiles?.length || 0} - NOT excluding from results`);
 
     if (usersToExclude.length > 0) {
       query._id = {
