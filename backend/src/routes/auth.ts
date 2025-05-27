@@ -23,8 +23,108 @@ const generateToken = (id: string): string => {
   });
 };
 
+// @route   POST /api/auth/check-email
+// @desc    Check if email already exists
+// @access  Public
+router.post('/check-email', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+
+    const userExists = await User.findOne({ email });
+    
+    res.json({
+      success: true,
+      exists: !!userExists
+    });
+  } catch (error: unknown) {
+    console.error('Check email error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: errorMessage
+    });
+  }
+});
+
+// @route   POST /api/auth/register-without-password
+// @desc    Register a new user without password
+// @access  Public
+router.post('/register-without-password', async (req: Request, res: Response) => {
+  try {
+    const { email, name, dateOfBirth, gender, interestedIn } = req.body;
+
+    // Check if user already exists
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({
+        success: false,
+        message: 'User already exists'
+      });
+    }
+
+    // Find the default subscription plan
+    const defaultPlan = await SubscriptionPlan.findOne({ isDefault: true, isActive: true });
+
+    if (!defaultPlan) {
+      console.error('CRITICAL: No default subscription plan found or active.');
+      return res.status(500).json({
+        success: false,
+        message: 'Server configuration error. Please contact support.'
+      });
+    }
+
+    // Create user without password
+    const user = await User.create({
+      email,
+      name,
+      dateOfBirth,
+      gender,
+      interestedIn,
+      subscriptionTier: defaultPlan.tier,
+      dailyLikeQuota: defaultPlan.features.dailyLikes,
+      remainingLikes: defaultPlan.features.dailyLikes,
+      lastLikeReset: new Date()
+    });
+
+    if (user) {
+      res.status(201).json({
+        success: true,
+        user: {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          gender: user.gender,
+          isProfileComplete: user.isProfileComplete,
+          token: generateToken(user._id)
+        }
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid user data'
+      });
+    }
+  } catch (error: unknown) {
+    console.error('Registration error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: errorMessage
+    });
+  }
+});
+
 // @route   POST /api/auth/register
-// @desc    Register a new user
+// @desc    Register a new user (with password - legacy)
 // @access  Public
 router.post('/register', async (req: Request, res: Response) => {
   try {
@@ -120,18 +220,17 @@ router.post('/register', async (req: Request, res: Response) => {
   }
 });
 
-// @route   POST /api/auth/login
-// @desc    Authenticate user & get token
+// @route   POST /api/auth/login-without-password
+// @desc    Login user without password (email only)
 // @access  Public
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login-without-password', async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const { email } = req.body;
 
     // Find user
     const user = await User.findOne({ email });
 
-    // Check user and password
-    if (user && (await user.matchPassword(password))) {
+    if (user) {
       res.json({
         success: true,
         user: {
@@ -144,9 +243,49 @@ router.post('/login', async (req: Request, res: Response) => {
         }
       });
     } else {
-      res.status(401).json({ 
-        success: false, 
-        message: 'Invalid email or password' 
+      res.status(401).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+  } catch (error: unknown) {
+    console.error('Login error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: errorMessage
+    });
+  }
+});
+
+// @route   POST /api/auth/login
+// @desc    Authenticate user & get token (with password - legacy)
+// @access  Public
+router.post('/login', async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+
+    // Find user
+    const user = await User.findOne({ email });
+
+    // Check user and password
+    if (user && password && (await user.matchPassword(password))) {
+      res.json({
+        success: true,
+        user: {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          gender: user.gender,
+          isProfileComplete: user.isProfileComplete,
+          token: generateToken(user._id)
+        }
+      });
+    } else {
+      res.status(401).json({
+        success: false,
+        message: 'Invalid email or password'
       });
     }
   } catch (error: unknown) {

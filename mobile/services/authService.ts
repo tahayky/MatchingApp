@@ -10,14 +10,28 @@ interface RegisterParams {
   interestedIn: ('male' | 'female' | 'other')[];
 }
 
+interface RegisterWithoutPasswordParams {
+  name: string;
+  email: string;
+  dateOfBirth: string;
+  gender: 'male' | 'female' | 'other';
+  interestedIn: ('male' | 'female' | 'other')[];
+}
+
 interface LoginParams {
   email: string;
   password: string;
 }
 
+interface CheckEmailResponse {
+  success: boolean;
+  exists: boolean;
+}
+
 interface AuthResponse {
   success: boolean;
-  user: {
+  message?: string;
+  user?: {
     _id: string;
     name: string;
     email: string;
@@ -47,7 +61,7 @@ const authService = {
   
   async register(params: RegisterParams): Promise<AuthResponse> {
     const response = await apiClient.post<AuthResponse>('/auth/register', params);
-    if (response.data.user.token) {
+    if (response.data.user?.token) {
       await AsyncStorage.setItem('authToken', response.data.user.token);
       await AsyncStorage.setItem('userId', response.data.user._id);
     }
@@ -56,7 +70,7 @@ const authService = {
   
   async login(params: LoginParams): Promise<AuthResponse> {
     const response = await apiClient.post<AuthResponse>('/auth/login', params);
-    if (response.data.user.token) {
+    if (response.data.user?.token) {
       await AsyncStorage.setItem('authToken', response.data.user.token);
       await AsyncStorage.setItem('userId', response.data.user._id);
     }
@@ -83,6 +97,29 @@ const authService = {
     }
     
     return true; // Token varsa kimlik doğrulanmış kabul et
+  },
+
+  async checkEmail(email: string): Promise<CheckEmailResponse> {
+    const response = await apiClient.post<CheckEmailResponse>('/auth/check-email', { email });
+    return response.data;
+  },
+
+  async registerWithoutPassword(params: RegisterWithoutPasswordParams): Promise<AuthResponse> {
+    const response = await apiClient.post<AuthResponse>('/auth/register-without-password', params);
+    if (response.data.user?.token) {
+      await AsyncStorage.setItem('authToken', response.data.user.token);
+      await AsyncStorage.setItem('userId', response.data.user._id);
+    }
+    return response.data;
+  },
+
+  async loginWithoutPassword(email: string): Promise<AuthResponse> {
+    const response = await apiClient.post<AuthResponse>('/auth/login-without-password', { email });
+    if (response.data.user?.token) {
+      await AsyncStorage.setItem('authToken', response.data.user.token);
+      await AsyncStorage.setItem('userId', response.data.user._id);
+    }
+    return response.data;
   }
 };
 

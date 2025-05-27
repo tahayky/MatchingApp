@@ -26,13 +26,13 @@ export default function SplashScreen() {
           console.log('Splash: Kullanıcı giriş yapmış, ana sayfaya yönlendiriliyor');
           router.replace('/(tabs)');
         } else {
-          console.log('Splash: Kullanıcı giriş yapmamış, giriş sayfasına yönlendiriliyor');
-          router.replace('/auth');
+          console.log('Splash: Kullanıcı giriş yapmamış, hoşgeldin sayfasına yönlendiriliyor');
+          router.replace('/auth/welcome');
         }
       } catch (error) {
         console.error('Splash: Oturum kontrolü hatası:', error);
-        // Hata durumunda giriş sayfasına yönlendir
-        router.replace('/auth');
+        // Hata durumunda hoşgeldin sayfasına yönlendir
+        router.replace('/auth/welcome');
       }
     };
     

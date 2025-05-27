@@ -44,7 +44,7 @@ export interface IRejectData {
 // Define interfaces
 export interface IUser extends Document {
   email: string;
-  password: string;
+  password?: string; // Password is now optional
   name: string;
   dateOfBirth: Date;
   gender: Gender;
@@ -89,7 +89,7 @@ const UserSchema: Schema = new Schema({
   },
   password: {
     type: String,
-    required: true,
+    required: false, // Password is now optional
     minlength: 6
   },
   name: {
@@ -197,7 +197,7 @@ UserSchema.index({ location: '2dsphere' });
 
 // Define the this-context for pre hooks with proper typing
 UserSchema.pre<IUser>('save', async function(next) {
-  if (!this.isModified('password')) return next();
+  if (!this.isModified('password') || !this.password) return next();
   
   try {
     const salt = await bcrypt.genSalt(10);
@@ -208,8 +208,9 @@ UserSchema.pre<IUser>('save', async function(next) {
   }
 });
 
-// Method to check password
+// Method to check password (only if password exists)
 UserSchema.methods.matchPassword = async function(enteredPassword: string): Promise<boolean> {
+  if (!this.password) return false;
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
