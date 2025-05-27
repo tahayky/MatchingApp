@@ -88,6 +88,7 @@ router.post('/register-without-password', async (req: Request, res: Response) =>
       dateOfBirth,
       gender,
       interestedIn,
+      isProfileComplete: true, // Set profile as complete since all required info is provided
       subscriptionTier: defaultPlan.planId, // Use planId instead of tier
       dailyLikeQuota: defaultPlan.dailyLikeQuota, // Use dailyLikeQuota from plan
       remainingLikes: defaultPlan.dailyLikeQuota, // Use dailyLikeQuota from plan
