@@ -432,15 +432,7 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
       };
     }
     
-    // Önce tüm uygun profilleri say (exclusion'lardan önce)
-    const queryWithoutExclusions = { ...query };
-    delete queryWithoutExclusions._id; // Exclusion'ları kaldır
-    queryWithoutExclusions._id = { $ne: currentUser._id }; // Sadece kendini hariç tut
-    
-    const totalProfilesBeforeExclusions = await User.countDocuments(queryWithoutExclusions);
     const totalMatchingProfiles = await User.countDocuments(query);
-    
-    console.log(`[DISCOVER PROFILES] Total profiles before exclusions: ${totalProfilesBeforeExclusions}`);
     console.log(`[DISCOVER PROFILES] Total profiles after exclusions: ${totalMatchingProfiles}`);
 
     console.log(`[DISCOVER PROFILES] User ID: ${currentUser._id}`);
@@ -493,6 +485,8 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
     // express-rate-limit with skipFailedRequests: true will handle counting successful (2xx) responses.
 
     console.log(`[${new Date().toISOString()}] [DISCOVER REQ SUCCESS] UserID: ${authReq.user?._id}. Responding with ${formattedUsers.length} profiles.`);
+    
+    // Frontend'e sadece gerekli bilgileri gönder
     return res.json({
       success: true,
       profiles: formattedUsers,
