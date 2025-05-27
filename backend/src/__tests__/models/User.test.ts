@@ -69,7 +69,7 @@ describe('User Model', () => {
     const preSaveHook = mongoose.model('User').schema.paths.password.validators[0];
     
     // Just mock the pre-save behavior instead of trying to call it directly
-    if (user.isModified('password')) {
+    if (user.isModified('password') && user.password) {
       const salt = await bcrypt.genSalt(10);
       user.password = await bcrypt.hash(user.password, salt);
     }
@@ -95,7 +95,7 @@ describe('User Model', () => {
     user.isModified = jest.fn().mockReturnValue(false);
     
     // Directly simulate the pre-save behavior
-    if (user.isModified('password')) {
+    if (user.isModified('password') && user.password) {
       const salt = await bcrypt.genSalt(10);
       user.password = await bcrypt.hash(user.password, salt);
     }
