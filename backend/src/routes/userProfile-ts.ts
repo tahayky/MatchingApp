@@ -352,7 +352,7 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
     const queryLimit = currentProfilesPerPage;
     const skip = (page - 1) * queryLimit;
 
-    console.log(`[${new Date().toISOString()}] [DISCOVER HANDLER] Processing. UserID: ${authReq.user?._id}. Page: ${page}, Limit: ${queryLimit}`);
+    console.log(`[${new Date().toISOString()}] [DISCOVER HANDLER] Processing. UserID: ${authReq.user?._id}. Page: ${page}, Limit: ${queryLimit}, Skip: ${skip}`);
 
     if (!authReq.user || !authReq.user._id) {
       return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
@@ -428,7 +428,16 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
       };
     }
     
+    // Önce tüm uygun profilleri say (exclusion'lardan önce)
+    const queryWithoutExclusions = { ...query };
+    delete queryWithoutExclusions._id; // Exclusion'ları kaldır
+    queryWithoutExclusions._id = { $ne: currentUser._id }; // Sadece kendini hariç tut
+    
+    const totalProfilesBeforeExclusions = await User.countDocuments(queryWithoutExclusions);
     const totalMatchingProfiles = await User.countDocuments(query);
+    
+    console.log(`[DISCOVER PROFILES] Total profiles before exclusions: ${totalProfilesBeforeExclusions}`);
+    console.log(`[DISCOVER PROFILES] Total profiles after exclusions: ${totalMatchingProfiles}`);
 
     console.log(`[DISCOVER PROFILES] User ID: ${currentUser._id}`);
     console.log(`[DISCOVER PROFILES] User Preferences: Age ${currentUser.preferences?.ageRange?.min}-${currentUser.preferences?.ageRange?.max}, Dist: ${currentUser.preferences?.distance}km`);
@@ -441,7 +450,9 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
       .skip(skip) 
       .limit(queryLimit); 
     
-    console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} potential matches from DB (page: ${page}, limit: ${queryLimit}, total matching before limit: ${totalMatchingProfiles}).`);
+    console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} potential matches from DB (page: ${page}, limit: ${queryLimit}, skip: ${skip}, total matching: ${totalMatchingProfiles}).`);
+    console.log(`[DISCOVER PROFILES] Excluded users count: ${usersToExclude.length}`);
+    console.log(`[DISCOVER PROFILES] Total available after exclusions: ${totalMatchingProfiles}`);
 
     const formattedUsers = potentialMatches.map(u => {
       let age;

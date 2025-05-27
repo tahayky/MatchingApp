@@ -125,8 +125,14 @@ export default function HomeScreen() {
         console.log(`${shuffledNewProfiles.length} profiles processed from API.`);
 
         if (response.pagination) {
-          setCurrentPage(response.pagination.currentPage + 1); 
+          // Bir sonraki sayfa numarasını ayarla
+          const nextPage = response.pagination.currentPage + 1;
+          setCurrentPage(nextPage);
           setTotalPages(response.pagination.totalPages);
+          
+          console.log(`[PAGINATION] Current page: ${response.pagination.currentPage}, Next page: ${nextPage}, Total pages: ${response.pagination.totalPages}`);
+          
+          // Eğer şu anki sayfa son sayfa ise veya profil gelmemişse
           if (response.pagination.currentPage >= response.pagination.totalPages || response.profiles.length === 0) {
             setAllProfilesLoaded(true);
             console.log(response.profiles.length === 0 ? 'No more profiles returned by API.' : 'All profiles loaded based on totalPages.');
