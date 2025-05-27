@@ -350,9 +350,8 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
   try {
     const page = parseInt(req.query.page as string) || 1;
     const queryLimit = currentProfilesPerPage;
-    const skip = (page - 1) * queryLimit;
 
-    console.log(`[${new Date().toISOString()}] [DISCOVER HANDLER] Processing. UserID: ${authReq.user?._id}. Page: ${page}, Limit: ${queryLimit}, Skip: ${skip}`);
+    console.log(`[${new Date().toISOString()}] [DISCOVER HANDLER] Processing. UserID: ${authReq.user?._id}. Page: ${page}, Limit: ${queryLimit}`);
 
     if (!authReq.user || !authReq.user._id) {
       return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
@@ -443,10 +442,9 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
 
     const potentialMatches = await User.find(query)
       .select('_id name dateOfBirth gender photos bio location interests occupation education')
-      .skip(skip)
       .limit(queryLimit);
     
-    console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} potential matches from DB (page: ${page}, limit: ${queryLimit}, skip: ${skip}, total: ${totalMatchingProfiles}).`);
+    console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} potential matches from DB (page: ${page}, limit: ${queryLimit}, total: ${totalMatchingProfiles}).`);
 
     const formattedUsers = potentialMatches.map(u => {
       let age;
