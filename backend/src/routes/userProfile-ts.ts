@@ -392,14 +392,14 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
     }
 
     const usersToExclude: mongoose.Types.ObjectId[] = [];
-    if (currentUser.rejected && currentUser.rejected.length > 0) {
-      currentUser.rejected.forEach((rejection: IRejectData) => {
-        if (rejection.user) { usersToExclude.push(rejection.user); }
+    // rejected listesi artık kullanılmıyor, Match tablosundan pass action'ları kontrol ediliyor
+    // Hem like hem de pass edilmiş profilleri hariç tut
+    const allMatches = await Match.find({ user: currentUser._id }).select('targetUser action');
+    if (allMatches.length > 0) {
+      allMatches.forEach(match => {
+        usersToExclude.push(match.targetUser);
       });
-    }
-    const likedMatches = await Match.find({ user: currentUser._id, action: 'like' }).select('targetUser');
-    if (likedMatches.length > 0) {
-      likedMatches.forEach(match => { usersToExclude.push(match.targetUser); });
+      console.log(`[DISCOVER PROFILES] Found ${allMatches.length} matches (like+pass) to exclude`);
     }
     const existingMatches = await Match.find({
         $or: [
