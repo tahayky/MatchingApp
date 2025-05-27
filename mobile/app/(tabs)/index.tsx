@@ -60,8 +60,9 @@ export default function HomeScreen() {
       return;
     }
     
-    const targetPage = pageToFetch !== undefined ? pageToFetch : (isLoadMore ? currentPage : 1);
-    console.log(`fetchProfiles called (isLoadMore: ${isLoadMore}, pageToFetch: ${targetPage})`);
+    // Backend skip kullanmadığı için her zaman sayfa 1 istiyoruz
+    const targetPage = 1;
+    console.log(`fetchProfiles called (isLoadMore: ${isLoadMore}, always requesting page: ${targetPage})`);
     setLoading(true);
 
     try {
@@ -125,17 +126,13 @@ export default function HomeScreen() {
         console.log(`${shuffledNewProfiles.length} profiles processed from API.`);
 
         if (response.pagination) {
-          // Bir sonraki sayfa numarasını ayarla
-          const nextPage = response.pagination.currentPage + 1;
-          setCurrentPage(nextPage);
-          setTotalPages(response.pagination.totalPages);
+          // Backend skip kullanmadığı için pagination mantığı basitleşti
+          console.log(`[PAGINATION] Total profiles available: ${response.pagination.totalProfiles}`);
           
-          console.log(`[PAGINATION] Current page: ${response.pagination.currentPage}, Next page: ${nextPage}, Total pages: ${response.pagination.totalPages}`);
-          
-          // Eğer şu anki sayfa son sayfa ise veya profil gelmemişse
-          if (response.pagination.currentPage >= response.pagination.totalPages || response.profiles.length === 0) {
+          // Eğer profil gelmemişse, tüm profiller yüklenmiş demektir
+          if (response.profiles.length === 0) {
             setAllProfilesLoaded(true);
-            console.log(response.profiles.length === 0 ? 'No more profiles returned by API.' : 'All profiles loaded based on totalPages.');
+            console.log('No more profiles returned by API - all profiles loaded.');
           } else {
             setAllProfilesLoaded(false);
           }
