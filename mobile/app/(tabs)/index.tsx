@@ -1,12 +1,16 @@
-import { StyleSheet, Alert, View, ActivityIndicator } from 'react-native';
+import { StyleSheet, Alert, View, ActivityIndicator, DeviceEventEmitter } from 'react-native';
 import { useState, useCallback, useEffect } from 'react';
-// import { useFocusEffect } from '@react-navigation/native'; 
+// import { useFocusEffect } from '@react-navigation/native';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { CardDeck } from '@/components/CardDeck';
-import { ProfileData as SwipeableCardProfileData } from '@/components/SwipeableCard'; 
-import { profileService, matchService, authService, DiscoverProfilesResponse } from '@/services'; 
+import { LikeQuotaDisplay } from '@/components/LikeQuotaDisplay';
+import { ProfileData as SwipeableCardProfileData } from '@/components/SwipeableCard';
+import { profileService, matchService, authService, DiscoverProfilesResponse } from '@/services';
+
+// Create global event emitter for like events
+(global as any).likeUsedEventEmitter = DeviceEventEmitter;
 
 type ScreenProfileData = SwipeableCardProfileData;
 
@@ -239,12 +243,18 @@ export default function HomeScreen() {
       console.log(`Like API response:`, response);
       if (response.success && response.match.isMatch) {
         console.log(`🎉 MATCH FORMED! You matched with ${profile.name}!`);
+        // Emit event to update quota display
+        console.log('🚀 Emitting likeUsed event');
+        DeviceEventEmitter.emit('likeUsed');
         Alert.alert("It's a Match!", `You and ${profile.name} liked each other!`,
           [{ text: "Keep Swiping", style: "cancel" }, { text: "See Matches", onPress: () => console.log("Navigate to matches") }]
         );
         fetchMatches();
       } else if (response.success) {
         console.log(`${profile.name} liked, but no match yet`);
+        // Emit event to update quota display
+        console.log('🚀 Emitting likeUsed event');
+        DeviceEventEmitter.emit('likeUsed');
       } else {
         console.log(`API response failed on like: ${response.message || 'Unknown error'}`);
         Alert.alert("Like Quota Reached", response.message || "Your daily like quota is full.",
@@ -293,6 +303,8 @@ export default function HomeScreen() {
         <ThemedText type="title">Find Your Match</ThemedText>
         <ThemedText>{matches.length} matches so far</ThemedText>
       </ThemedView>
+      
+      <LikeQuotaDisplay />
 
       {profiles.length === 0 && !loading && allProfilesLoaded && (
          <ThemedView style={[styles.container, styles.centered]}>

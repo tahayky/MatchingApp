@@ -56,6 +56,18 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
       // Check quota using the centralized function
       await checkAndResetQuota(req.user);
       
+      // Reload user to get updated quota after reset
+      const updatedUser = await User.findById(req.user._id);
+      if (!updatedUser) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+      
+      // Update req.user with fresh data
+      req.user = updatedUser;
+      
       // Check if user has remaining likes
       if (req.user.remainingLikes <= 0) {
         console.log('User has NO remaining likes, returning error');
@@ -132,7 +144,8 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
       });
     }
 
-    const currentUser = await User.findById(req.user._id);
+    // Use the updated user from quota check if it's a like action
+    const currentUser = action === 'like' ? req.user : await User.findById(req.user._id);
     if (!currentUser) {
       // This should ideally not happen due to 'protect' middleware
       return res.status(404).json({ success: false, message: 'Current user not found' });
