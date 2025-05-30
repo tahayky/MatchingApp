@@ -53,24 +53,25 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
 
     // Only check quota for like actions
     if (action === 'like') {
-      // Check quota using the centralized function
-      await checkAndResetQuota(req.user);
-      
-      // Reload user to get updated quota after reset
-      const updatedUser = await User.findById(req.user._id);
-      if (!updatedUser) {
+      // First, get fresh user data from database
+      const freshUser = await User.findById(req.user._id);
+      if (!freshUser) {
         return res.status(404).json({
           success: false,
           message: 'User not found'
         });
       }
       
-      // Update req.user with fresh data
-      req.user = updatedUser;
+      // Check quota using the centralized function with fresh user data
+      await checkAndResetQuota(freshUser);
+      
+      // Update req.user with the potentially updated user
+      req.user = freshUser;
       
       // Check if user has remaining likes
+      console.log(`[QUOTA CHECK] User ${req.user._id} has ${req.user.remainingLikes} remaining likes`);
       if (req.user.remainingLikes <= 0) {
-        console.log('User has NO remaining likes, returning error');
+        console.log('❌ User has NO remaining likes, returning 403 error');
         return res.status(403).json({
           success: false,
           message: 'Daily like quota exceeded. Try again tomorrow.',
@@ -81,6 +82,7 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
           }
         });
       }
+      console.log('✅ User has remaining likes, proceeding with like action');
     }
 
     // Make sure user isn't acting on their own profile
@@ -144,8 +146,8 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Use the updated user from quota check if it's a like action
-    const currentUser = action === 'like' ? req.user : await User.findById(req.user._id);
+    // Always use fresh user data
+    const currentUser = await User.findById(req.user._id);
     if (!currentUser) {
       // This should ideally not happen due to 'protect' middleware
       return res.status(404).json({ success: false, message: 'Current user not found' });
@@ -198,6 +200,11 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
     }
 
     if (action === 'like') {
+      // IMMEDIATELY decrease like count after quota check passed
+      currentUser.remainingLikes = Math.max(0, currentUser.remainingLikes - 1);
+      await currentUser.save();
+      console.log(`[LIKE CONSUMED] User ${currentUser._id} now has ${currentUser.remainingLikes} remaining likes`);
+      
       const mutualMatch = await Match.findOne({
         user: targetUser._id,
         targetUser: currentUser._id,
@@ -233,17 +240,14 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
 
         let quotaInfo;
         try {
-          // Directly decrement like count instead of making HTTP request
-          currentUser.remainingLikes = Math.max(0, currentUser.remainingLikes - 1);
-          await currentUser.save();
-          
+          // Like already consumed at the beginning of like action
           quotaInfo = {
             remaining: currentUser.remainingLikes,
             total: currentUser.dailyLikeQuota,
             resetTime: currentUser.likesResetTime
           };
           
-          console.log(`[MUTUAL MATCH] Like consumed, remaining: ${currentUser.remainingLikes}`);
+          console.log(`[MUTUAL MATCH] Current remaining likes: ${currentUser.remainingLikes}`);
         } catch (error: unknown) {
           console.error('Error consuming like for mutual match:', error);
           return res.status(500).json({
@@ -292,17 +296,14 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
 
     if (action === 'like') {
       try {
-        // Directly decrement like count instead of making HTTP request
-        currentUser.remainingLikes = Math.max(0, currentUser.remainingLikes - 1);
-        await currentUser.save();
-        
+        // Like already consumed at the beginning of like action
         const quotaInfo = {
           remaining: currentUser.remainingLikes,
           total: currentUser.dailyLikeQuota,
           resetTime: currentUser.likesResetTime
         };
         
-        console.log(`[REGULAR LIKE] Like consumed, remaining: ${currentUser.remainingLikes}`);
+        console.log(`[REGULAR LIKE] Current remaining likes: ${currentUser.remainingLikes}`);
         return res.json({
           success: true,
           match: actionResult,
