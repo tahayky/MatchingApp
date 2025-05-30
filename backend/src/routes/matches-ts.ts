@@ -98,7 +98,11 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
               action,
               isMatch: false 
             },
-            quotaInfo: result.data.quotaInfo
+            quotaInfo: {
+              remaining: req.user.remainingLikes,
+              total: req.user.dailyLikeQuota,
+              resetTime: req.user.likesResetTime
+            }
           });
         } catch (error: unknown) {
           console.error('Error consuming like for test profile:', error);
