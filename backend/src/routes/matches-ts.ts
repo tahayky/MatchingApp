@@ -4,7 +4,6 @@ import Match, { IMatch, MatchAction } from '../models/Match';
 import User, { IUser, IPhoto, ILikeData, IRejectData } from '../models/User'; // Updated to use User model and its types
 import { protect } from '../middleware/auth';
 import { isAdmin } from '../middleware/admin';
-import axios from 'axios';
 import { checkAndResetQuota } from './subscription';
 
 // Extend Express Request interface
@@ -86,13 +85,11 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
       
       if (action === 'like') {
         try {
-          const result = await axios.post('http://localhost:3000/api/subscription/consume-like', {}, {
-            headers: {
-              'Authorization': req.headers.authorization || ''
-            }
-          });
+          // Directly decrement like count instead of making HTTP request
+          req.user.remainingLikes = Math.max(0, req.user.remainingLikes - 1);
+          await req.user.save();
           
-          console.log(`[TEST PROFILE] Quota endpoint consumed a like, remaining: ${result.data.quotaInfo.remaining}`);
+          console.log(`[TEST PROFILE] Like consumed, remaining: ${req.user.remainingLikes}`);
           
           return res.json({
             success: true,
@@ -219,16 +216,17 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
 
         let quotaInfo;
         try {
-          const result = await axios.post('http://localhost:3000/api/subscription/consume-like', {}, {
-            headers: {
-              'Authorization': req.headers.authorization || ''
-            }
-          });
-          console.log(`[MUTUAL MATCH] Quota endpoint consumed a like, remaining: ${result.data.quotaInfo.remaining}`);
-          quotaInfo = result.data.quotaInfo;
-          // Update current user's remaining likes based on API response
-          currentUser.remainingLikes = quotaInfo.remaining;
+          // Directly decrement like count instead of making HTTP request
+          currentUser.remainingLikes = Math.max(0, currentUser.remainingLikes - 1);
           await currentUser.save();
+          
+          quotaInfo = {
+            remaining: currentUser.remainingLikes,
+            total: currentUser.dailyLikeQuota,
+            resetTime: currentUser.likesResetTime
+          };
+          
+          console.log(`[MUTUAL MATCH] Like consumed, remaining: ${currentUser.remainingLikes}`);
         } catch (error: unknown) {
           console.error('Error consuming like for mutual match:', error);
           return res.status(500).json({
@@ -277,17 +275,22 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
 
     if (action === 'like') {
       try {
-        const result = await axios.post('http://localhost:3000/api/subscription/consume-like', {}, {
-          headers: {
-            'Authorization': req.headers.authorization || ''
-          }
-        });
-        console.log(`[REGULAR LIKE] Quota endpoint consumed a like, remaining: ${result.data.quotaInfo.remaining}`);
+        // Directly decrement like count instead of making HTTP request
+        currentUser.remainingLikes = Math.max(0, currentUser.remainingLikes - 1);
+        await currentUser.save();
+        
+        const quotaInfo = {
+          remaining: currentUser.remainingLikes,
+          total: currentUser.dailyLikeQuota,
+          resetTime: currentUser.likesResetTime
+        };
+        
+        console.log(`[REGULAR LIKE] Like consumed, remaining: ${currentUser.remainingLikes}`);
         return res.json({
           success: true,
           match: actionResult,
           message: `Action ${action} registered successfully`,
-          quotaInfo: result.data.quotaInfo
+          quotaInfo: quotaInfo
         });
       } catch (error: unknown) {
         console.error('Error consuming like:', error);
