@@ -45,19 +45,33 @@ export default function AuthLayout() {
 
   return (
     <Stack>
-      <Stack.Screen 
-        name="index" 
-        options={{ 
+      <Stack.Screen
+        name="index"
+        options={{
+          title: 'Welcome',
+          headerShown: false
+        }}
+      />
+      <Stack.Screen
+        name="welcome"
+        options={{
+          title: 'Welcome',
+          headerShown: false
+        }}
+      />
+      <Stack.Screen
+        name="login-wizard"
+        options={{
           title: 'Sign In',
           headerShown: false
-        }} 
+        }}
       />
-      <Stack.Screen 
-        name="register" 
-        options={{ 
+      <Stack.Screen
+        name="register-wizard"
+        options={{
           title: 'Create Account',
           headerShown: false
-        }} 
+        }}
       />
     </Stack>
   );
