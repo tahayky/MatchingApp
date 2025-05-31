@@ -18,6 +18,15 @@ const router: Router = express.Router();
 // @desc    Register an action (like or pass)
 // @access  Private
 router.post('/action', protect, async (req: AuthRequest, res: Response) => {
+  // Add immediate response to test if route is hit
+  if (req.body.test === true) {
+    return res.json({
+      message: 'Route is working',
+      remainingLikes: req.user?.remainingLikes,
+      dailyLikeQuota: req.user?.dailyLikeQuota
+    });
+  }
+  
   console.log('==================================================');
   console.log(`ACTION REQUEST - ${new Date().toISOString()}`);
   console.log('User:', req.user?._id);
@@ -68,16 +77,21 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
       // Update req.user with the potentially updated user
       req.user = freshUser;
       
-      // Check if user has remaining likes
-      console.log(`[QUOTA CHECK] User ${req.user._id} has ${req.user.remainingLikes} remaining likes`);
-      if (req.user.remainingLikes <= 0) {
+      // CRITICAL: Check if user has remaining likes
+      // Force check even if remainingLikes is undefined or null
+      const currentLikes = req.user.remainingLikes || 0;
+      
+      console.log(`[QUOTA CHECK] User ${req.user._id} has ${currentLikes} remaining likes`);
+      
+      if (currentLikes <= 0) {
+        // ALWAYS return error if no likes left
         console.log('❌ User has NO remaining likes, returning 403 error');
         return res.status(403).json({
           success: false,
           message: 'Daily like quota exceeded. Try again tomorrow.',
           quotaInfo: {
             remaining: 0,
-            total: req.user.dailyLikeQuota,
+            total: req.user.dailyLikeQuota || 5,
             resetTime: req.user.likesResetTime
           }
         });
@@ -98,6 +112,30 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
       console.log(`[DEBUG] Invalid ObjectID: ${targetUserId}, handling as test profile ID`);
       
       if (action === 'like') {
+        // Get fresh user data for test profiles too
+        const freshUserForTest = await User.findById(req.user._id);
+        if (!freshUserForTest) {
+          return res.status(404).json({
+            success: false,
+            message: 'User not found'
+          });
+        }
+        req.user = freshUserForTest;
+        
+        // Check quota for test profiles too!
+        if (req.user.remainingLikes <= 0) {
+          console.log('❌ User has NO remaining likes for test profile, returning 403 error');
+          return res.status(403).json({
+            success: false,
+            message: 'Daily like quota exceeded. Try again tomorrow.',
+            quotaInfo: {
+              remaining: 0,
+              total: req.user.dailyLikeQuota,
+              resetTime: req.user.likesResetTime
+            }
+          });
+        }
+        
         try {
           // Directly decrement like count instead of making HTTP request
           req.user.remainingLikes = Math.max(0, req.user.remainingLikes - 1);
