@@ -61,6 +61,10 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
     
     // VERY FIRST THING: Check quota for like actions
     if (action === 'like') {
+      console.log('🔴 [LIKE REQUEST START] ====================================');
+      console.log(`User ID: ${req.user._id}`);
+      console.log(`Initial remainingLikes from token: ${req.user.remainingLikes}`);
+      
       // Get absolutely fresh user data
       const currentUserFromDB = await User.findById(req.user._id);
       if (!currentUserFromDB) {
@@ -70,11 +74,18 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
         });
       }
       
+      console.log(`Fresh remainingLikes from DB: ${currentUserFromDB.remainingLikes}`);
+      console.log(`Daily quota: ${currentUserFromDB.dailyLikeQuota}`);
+      console.log(`Reset time: ${currentUserFromDB.likesResetTime}`);
+      
       // Check and potentially reset quota
       await checkAndResetQuota(currentUserFromDB);
+      console.log(`After checkAndResetQuota: ${currentUserFromDB.remainingLikes}`);
       
       // IMMEDIATE quota check - before ANY other operation
       if (!currentUserFromDB.remainingLikes || currentUserFromDB.remainingLikes <= 0) {
+        console.log('❌ NO REMAINING LIKES - BLOCKING REQUEST');
+        console.log('🔴 [LIKE REQUEST END - BLOCKED] ====================================');
         return res.status(403).json({
           success: false,
           message: 'Daily like quota exceeded. Try again tomorrow.',
@@ -86,6 +97,7 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
         });
       }
       
+      console.log('✅ Has remaining likes, proceeding...');
       // Update req.user with fresh data
       req.user = currentUserFromDB;
     }
@@ -224,8 +236,10 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
 
     if (action === 'like') {
       // IMMEDIATELY decrease like count after quota check passed
+      console.log(`🔻 [BEFORE DECREMENT] remainingLikes: ${currentUser.remainingLikes}`);
       currentUser.remainingLikes = Math.max(0, currentUser.remainingLikes - 1);
       await currentUser.save();
+      console.log(`🔻 [AFTER DECREMENT] remainingLikes: ${currentUser.remainingLikes}`);
       console.log(`[LIKE CONSUMED] User ${currentUser._id} now has ${currentUser.remainingLikes} remaining likes`);
       
       const mutualMatch = await Match.findOne({
@@ -342,6 +356,10 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
         });
       }
     } else {
+      // Final response
+      const finalUser = await User.findById(req.user._id);
+      console.log(`🔴 [LIKE REQUEST END - SUCCESS] Final remainingLikes: ${finalUser?.remainingLikes} ====================================`);
+      
       return res.json({
         success: true,
         match: actionResult,
