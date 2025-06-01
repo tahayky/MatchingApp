@@ -91,7 +91,7 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
     
     // VERY FIRST THING: Check quota for like actions
     if (action === 'like') {
-      console.log('🔴 [LIKE REQUEST START] ====================================');
+      console.log('🔴 [LIKE REQUEST START] ===================================');
       console.log(`User ID: ${req.user._id}`);
       console.log(`Initial remainingLikes from token: ${req.user.remainingLikes}`);
       
