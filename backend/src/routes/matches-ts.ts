@@ -414,7 +414,7 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
       console.log(`🔴 [LIKE REQUEST END - SUCCESS] Final remainingLikes: ${finalUser?.remainingLikes} ====================================`);
       
       // Release lock if it was a like action
-      if (action === 'like') {
+      if (req.body.action === 'like') {
         releaseLikeLock(req.user._id.toString());
       }
       
