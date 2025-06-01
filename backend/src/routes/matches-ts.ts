@@ -40,6 +40,15 @@ router.get('/quota-status', protect, async (req: AuthRequest, res: Response) => 
 // @desc    Register an action (like or pass)
 // @access  Private
 router.post('/action', protect, async (req: AuthRequest, res: Response) => {
+  // TEMPORARY: Always return error for like actions to test
+  if (req.body.action === 'like') {
+    return res.status(403).json({
+      success: false,
+      message: 'TEMPORARY: All likes are blocked for testing',
+      debug: 'This is a test to see if the code is actually running'
+    });
+  }
+  
   // Add immediate response to test if route is hit
   if (req.body.test === true) {
     return res.json({
