@@ -14,6 +14,36 @@ interface AuthRequest extends Request {
 // Create router instance
 const router: Router = express.Router();
 
+// In-memory lock for like operations per user
+const userLikeLocks = new Map<string, boolean>();
+
+// Helper function to acquire lock
+const acquireLikeLock = async (userId: string): Promise<boolean> => {
+  const maxAttempts = 50; // 5 seconds max wait (50 * 100ms)
+  let attempts = 0;
+  
+  while (attempts < maxAttempts) {
+    if (!userLikeLocks.get(userId)) {
+      userLikeLocks.set(userId, true);
+      console.log(`🔒 Lock acquired for user ${userId}`);
+      return true;
+    }
+    
+    // Wait 100ms before retry
+    await new Promise(resolve => setTimeout(resolve, 100));
+    attempts++;
+  }
+  
+  console.log(`⏱️ Lock timeout for user ${userId}`);
+  return false;
+};
+
+// Helper function to release lock
+const releaseLikeLock = (userId: string) => {
+  userLikeLocks.delete(userId);
+  console.log(`🔓 Lock released for user ${userId}`);
+};
+
 // Test endpoint to check user's current quota
 router.get('/quota-status', protect, async (req: AuthRequest, res: Response) => {
   if (!req.user) {
@@ -65,6 +95,23 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
       console.log(`User ID: ${req.user._id}`);
       console.log(`Initial remainingLikes from token: ${req.user.remainingLikes}`);
       
+      // Try to acquire lock for this user
+      const lockAcquired = await acquireLikeLock(req.user._id.toString());
+      if (!lockAcquired) {
+        console.log('❌ Could not acquire lock - another like operation in progress');
+        return res.status(429).json({
+          success: false,
+          message: 'Another like operation is in progress. Please wait.',
+          quotaInfo: {
+            remaining: req.user.remainingLikes || 0,
+            total: req.user.dailyLikeQuota || 5,
+            resetTime: req.user.likesResetTime
+          }
+        });
+      }
+      
+      try {
+      
       // Get absolutely fresh user data
       const currentUserFromDB = await User.findById(req.user._id);
       if (!currentUserFromDB) {
@@ -100,6 +147,12 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
       console.log('✅ Has remaining likes, proceeding...');
       // Update req.user with fresh data
       req.user = currentUserFromDB;
+      
+      } catch (error) {
+        // Always release lock on error
+        releaseLikeLock(req.user._id.toString());
+        throw error;
+      }
     }
 
     // Validate action
@@ -360,6 +413,11 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
       const finalUser = await User.findById(req.user._id);
       console.log(`🔴 [LIKE REQUEST END - SUCCESS] Final remainingLikes: ${finalUser?.remainingLikes} ====================================`);
       
+      // Release lock if it was a like action
+      if (action === 'like') {
+        releaseLikeLock(req.user._id.toString());
+      }
+      
       return res.json({
         success: true,
         match: actionResult,
@@ -368,6 +426,12 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
     }
   } catch (error: unknown) {
     console.error('Match action error:', error);
+    
+    // Release lock if it was a like action
+    if (req.body.action === 'like' && req.user?._id) {
+      releaseLikeLock(req.user._id.toString());
+    }
+    
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     res.status(500).json({
       success: false,
