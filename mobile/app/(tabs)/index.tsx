@@ -22,6 +22,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState<boolean>(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [likeLoading, setLikeLoading] = useState<boolean>(false); // Like işlemi için loading
+  const [processingProfileId, setProcessingProfileId] = useState<string | null>(null); // İşlem yapılan profil ID'si
   
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
@@ -236,22 +237,26 @@ export default function HomeScreen() {
   const handleSwipeRight = async (profile: ScreenProfileData) => {
     console.log(`Liking profile ${profile.name} - API request`);
     
-    // Eğer zaten like işlemi devam ediyorsa, yeni işlem başlatma
-    if (likeLoading) {
+    // Çifte kontrol: hem genel loading hem de bu profil için işlem kontrolü
+    if (likeLoading || processingProfileId === profile.id) {
       console.log('Like işlemi zaten devam ediyor, yeni işlem başlatılmıyor');
       return;
     }
     
+    // Hemen işlem başlangıcını işaretle
     setLikeLoading(true);
-    setProfiles(prev => prev.filter(p => p.id !== profile.id));
+    setProcessingProfileId(profile.id);
     try {
       const response = await matchService.likeOrPassUser({
         targetUserId: profile.id,
         action: 'like'
       });
       console.log(`Like API response:`, response);
+      
       if (response.success && response.match.isMatch) {
         console.log(`🎉 MATCH FORMED! You matched with ${profile.name}!`);
+        // Remove card only after successful API response
+        setProfiles(prev => prev.filter(p => p.id !== profile.id));
         // Emit event to update quota display
         console.log('🚀 Emitting likeUsed event');
         DeviceEventEmitter.emit('likeUsed');
@@ -261,11 +266,23 @@ export default function HomeScreen() {
         fetchMatches();
       } else if (response.success) {
         console.log(`${profile.name} liked, but no match yet`);
+        // Remove card only after successful API response
+        setProfiles(prev => prev.filter(p => p.id !== profile.id));
         // Emit event to update quota display
         console.log('🚀 Emitting likeUsed event');
         DeviceEventEmitter.emit('likeUsed');
       } else {
         console.log(`API response failed on like: ${response.message || 'Unknown error'}`);
+        
+        // Handle "Another like operation is in progress" silently
+        if (response.message && response.message.includes('Another like operation is in progress')) {
+          console.log('Like operation already in progress, ignoring silently');
+          // Reset states and return
+          setLikeLoading(false);
+          setProcessingProfileId(null);
+          return; // Don't show alert or remove card
+        }
+        
         Alert.alert("Like Quota Reached", response.message || "Your daily like quota is full.",
           [{ text: "OK", style: "cancel" }, { text: "Upgrade to Premium", onPress: () => console.log("Redirect to Subscription")}]
         );
@@ -274,6 +291,7 @@ export default function HomeScreen() {
       console.log(`Critical API error on like: ${error}`);
     } finally {
       setLikeLoading(false);
+      setProcessingProfileId(null);
     }
   };
 
