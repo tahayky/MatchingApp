@@ -159,6 +159,11 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
         // Always release lock on error
         releaseLikeLock(req.user._id.toString());
         throw error;
+      } finally {
+        // Always release lock when like action is done
+        if (action === 'like') {
+          releaseLikeLock(req.user._id.toString());
+        }
       }
     }
 
@@ -419,11 +424,6 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
       // Final response
       const finalUser = await User.findById(req.user._id);
       console.log(`🔴 [LIKE REQUEST END - SUCCESS] Final remainingLikes: ${finalUser?.remainingLikes} ====================================`);
-      
-      // Release lock if it was a like action
-      if (req.body.action === 'like') {
-        releaseLikeLock(req.user._id.toString());
-      }
       
       return res.json({
         success: true,
