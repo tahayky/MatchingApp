@@ -22,26 +22,30 @@ const acquireLikeLock = async (userId: string): Promise<boolean> => {
   const maxAttempts = 10; // 1 second max wait (10 * 100ms)
   let attempts = 0;
   
+  console.log(`🔍 Attempting to acquire lock for user ${userId}. Current locks:`, Array.from(userLikeLocks.keys()));
+  
   while (attempts < maxAttempts) {
     if (!userLikeLocks.get(userId)) {
       userLikeLocks.set(userId, true);
-      console.log(`🔒 Lock acquired for user ${userId}`);
+      console.log(`🔒 Lock acquired for user ${userId}. Total active locks: ${userLikeLocks.size}`);
       return true;
     }
     
+    console.log(`⏳ Lock busy for user ${userId}, attempt ${attempts + 1}/${maxAttempts}`);
     // Wait 100ms before retry
     await new Promise(resolve => setTimeout(resolve, 100));
     attempts++;
   }
   
-  console.log(`⏱️ Lock timeout for user ${userId} after ${maxAttempts * 100}ms`);
+  console.log(`⏱️ Lock timeout for user ${userId} after ${maxAttempts * 100}ms. Active locks:`, Array.from(userLikeLocks.keys()));
   return false;
 };
 
 // Helper function to release lock
 const releaseLikeLock = (userId: string) => {
+  const wasLocked = userLikeLocks.has(userId);
   userLikeLocks.delete(userId);
-  console.log(`🔓 Lock released for user ${userId}`);
+  console.log(`🔓 Lock ${wasLocked ? 'released' : 'was not locked'} for user ${userId}. Remaining locks: ${userLikeLocks.size}`);
 };
 
 // Test endpoint to check user's current quota

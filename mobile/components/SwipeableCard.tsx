@@ -55,10 +55,18 @@ export function SwipeableCard({ profile, onSwipeLeft, onSwipeRight, disabled = f
   const rotation = useSharedValue(0);
 
   const handleSwipeLeft = () => {
+    if (disabled) {
+      console.log('SwipeableCard: Swipe disabled, ignoring left swipe');
+      return;
+    }
     onSwipeLeft(profile);
   };
 
   const handleSwipeRight = () => {
+    if (disabled) {
+      console.log('SwipeableCard: Swipe disabled, ignoring right swipe');
+      return;
+    }
     onSwipeRight(profile);
   };
 
