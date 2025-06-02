@@ -18,9 +18,10 @@ const RETRY_DELAY_MS = 7000; // Yeniden denemeler arası bekleme süresi (ms), b
 
 export default function HomeScreen() {
   const [profiles, setProfiles] = useState<ScreenProfileData[]>([]);
-  const [matches, setMatches] = useState<any[]>([]); 
-  const [loading, setLoading] = useState<boolean>(false); 
+  const [matches, setMatches] = useState<any[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [likeLoading, setLikeLoading] = useState<boolean>(false); // Like işlemi için loading
   
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
@@ -234,6 +235,14 @@ export default function HomeScreen() {
 
   const handleSwipeRight = async (profile: ScreenProfileData) => {
     console.log(`Liking profile ${profile.name} - API request`);
+    
+    // Eğer zaten like işlemi devam ediyorsa, yeni işlem başlatma
+    if (likeLoading) {
+      console.log('Like işlemi zaten devam ediyor, yeni işlem başlatılmıyor');
+      return;
+    }
+    
+    setLikeLoading(true);
     setProfiles(prev => prev.filter(p => p.id !== profile.id));
     try {
       const response = await matchService.likeOrPassUser({
@@ -263,6 +272,8 @@ export default function HomeScreen() {
       }
     } catch (error) {
       console.log(`Critical API error on like: ${error}`);
+    } finally {
+      setLikeLoading(false);
     }
   };
 
@@ -325,6 +336,7 @@ export default function HomeScreen() {
           onSwipeLeft={handleSwipeLeft}
           onSwipeRight={handleSwipeRight}
           onDeckEmpty={handleDeckEmpty}
+          likeLoading={likeLoading}
         />
       )}
     </ThemedView>

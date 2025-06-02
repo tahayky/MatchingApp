@@ -19,7 +19,7 @@ const userLikeLocks = new Map<string, boolean>();
 
 // Helper function to acquire lock
 const acquireLikeLock = async (userId: string): Promise<boolean> => {
-  const maxAttempts = 50; // 5 seconds max wait (50 * 100ms)
+  const maxAttempts = 10; // 1 second max wait (10 * 100ms)
   let attempts = 0;
   
   while (attempts < maxAttempts) {
@@ -34,7 +34,7 @@ const acquireLikeLock = async (userId: string): Promise<boolean> => {
     attempts++;
   }
   
-  console.log(`⏱️ Lock timeout for user ${userId}`);
+  console.log(`⏱️ Lock timeout for user ${userId} after ${maxAttempts * 100}ms`);
   return false;
 };
 
@@ -99,6 +99,7 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
       const lockAcquired = await acquireLikeLock(req.user._id.toString());
       if (!lockAcquired) {
         console.log('❌ Could not acquire lock - another like operation in progress');
+        // Don't need to release lock here since we never acquired it
         return res.status(429).json({
           success: false,
           message: 'Another like operation is in progress. Please wait.',
@@ -133,6 +134,8 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
       if (!currentUserFromDB.remainingLikes || currentUserFromDB.remainingLikes <= 0) {
         console.log('❌ NO REMAINING LIKES - BLOCKING REQUEST');
         console.log('🔴 [LIKE REQUEST END - BLOCKED] ====================================');
+        // Release lock before returning error
+        releaseLikeLock(req.user._id.toString());
         return res.status(403).json({
           success: false,
           message: 'Daily like quota exceeded. Try again tomorrow.',

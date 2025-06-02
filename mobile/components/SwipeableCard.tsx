@@ -42,9 +42,10 @@ interface SwipeableCardProps {
   profile: ProfileData;
   onSwipeLeft: (profile: ProfileData) => void;
   onSwipeRight: (profile: ProfileData) => void;
+  disabled?: boolean;
 }
 
-export function SwipeableCard({ profile, onSwipeLeft, onSwipeRight }: SwipeableCardProps) {
+export function SwipeableCard({ profile, onSwipeLeft, onSwipeRight, disabled = false }: SwipeableCardProps) {
   // Güvenlik kontrolü - profil objesi geçerli mi?
   console.log(`SwipeableCard: Profil render ediliyor: ${profile.name}`);
   console.log(`SwipeableCard: Profil resmi:`, profile.image);
@@ -120,8 +121,8 @@ export function SwipeableCard({ profile, onSwipeLeft, onSwipeRight }: SwipeableC
   });
 
   return (
-    <PanGestureHandler onGestureEvent={panGestureEvent}>
-      <Animated.View style={[styles.cardContainer, cardStyle]}>
+    <PanGestureHandler onGestureEvent={panGestureEvent} enabled={!disabled}>
+      <Animated.View style={[styles.cardContainer, cardStyle, disabled && { opacity: 0.6 }]}>
         <Image source={profile.image} style={styles.image} />
         
         <Animated.View style={[styles.overlayLike, likeOpacityStyle]}>

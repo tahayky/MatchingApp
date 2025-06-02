@@ -12,9 +12,10 @@ interface CardDeckProps {
   onSwipeLeft: (profile: ProfileData) => void;
   onSwipeRight: (profile: ProfileData) => void;
   onDeckEmpty: () => void;
+  likeLoading?: boolean;
 }
 
-export function CardDeck({ profiles, onSwipeLeft, onSwipeRight, onDeckEmpty }: CardDeckProps) {
+export function CardDeck({ profiles, onSwipeLeft, onSwipeRight, onDeckEmpty, likeLoading = false }: CardDeckProps) {
   const [currentProfiles, setCurrentProfiles] = useState<ProfileData[]>([]);
   
   // Initialize with profiles - debug eklenerek
@@ -68,6 +69,7 @@ export function CardDeck({ profiles, onSwipeLeft, onSwipeRight, onDeckEmpty }: C
             profile={currentProfiles[0]}
             onSwipeLeft={handleSwipeLeft}
             onSwipeRight={handleSwipeRight}
+            disabled={likeLoading}
           />
         </>
       ) : (
