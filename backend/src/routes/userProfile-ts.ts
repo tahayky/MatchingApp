@@ -376,6 +376,8 @@ export async function updateDiscoverLimiter() {
 // Redis Connection Monitor - Runs every 30 seconds
 let redisMonitorInterval: NodeJS.Timeout | undefined;
 let heartbeatEnabled = true; // Default enabled
+let consecutiveFailures = 0; // Track consecutive ping failures for reconnection
+let isReconnecting = false; // Prevent multiple simultaneous reconnection attempts
 
 // Function to toggle Redis heartbeat monitoring
 export async function toggleRedisHeartbeat(enabled: boolean) {
@@ -402,16 +404,72 @@ async function loadHeartbeatSetting() {
   }
 }
 
+// Attempt Redis reconnection
+async function attemptReconnection() {
+  if (!heartbeatEnabled) {
+    console.log('[Redis Reconnect] Heartbeat disabled, skipping reconnection attempt');
+    return false;
+  }
+
+  if (isReconnecting) {
+    console.log('[Redis Reconnect] Reconnection already in progress, skipping...');
+    return false;
+  }
+
+  isReconnecting = true;
+  console.log('[Redis Reconnect] Starting reconnection attempt...');
+
+  try {
+    // Cleanup existing connection
+    if (redisClient) {
+      try {
+        await redisClient.quit();
+        console.log('[Redis Reconnect] Previous client disconnected gracefully');
+      } catch (quitError) {
+        console.log('[Redis Reconnect] Previous client force disconnected');
+      }
+    }
+
+    // Reset connection variables
+    redisClient = undefined;
+    redisStoreInstance = undefined;
+    discoverLimiterInstance = undefined;
+
+    // Wait a bit before reconnection
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Attempt to recreate connection
+    console.log('[Redis Reconnect] Attempting to recreate Redis connection...');
+    await updateDiscoverLimiter();
+
+    if (redisClient && redisStoreInstance) {
+      console.log('[Redis Reconnect] ✅ Reconnection successful!');
+      consecutiveFailures = 0;
+      return true;
+    } else {
+      console.log('[Redis Reconnect] ❌ Reconnection failed - falling back to memory store');
+      return false;
+    }
+  } catch (reconnectError: any) {
+    console.error('[Redis Reconnect] ❌ Reconnection error:', reconnectError?.message || reconnectError);
+    return false;
+  } finally {
+    isReconnecting = false;
+  }
+}
+
 function startRedisMonitoring() {
   if (!heartbeatEnabled) {
     console.log('[Redis Monitor] Heartbeat is disabled, not starting monitoring');
     return;
   }
+
   if (redisMonitorInterval) {
     clearInterval(redisMonitorInterval);
   }
   
   console.log('[Redis Monitor] Starting Redis connection monitoring (30 second intervals)');
+  consecutiveFailures = 0; // Reset failure counter when starting
   
   redisMonitorInterval = setInterval(async () => {
     if (!heartbeatEnabled) {
@@ -426,6 +484,13 @@ function startRedisMonitoring() {
     if (!redisClient) {
       console.log(`[Redis Monitor] ${timestamp} - Redis client: NOT CONNECTED`);
       console.log(`[Redis Monitor] ${timestamp} - Rate limiter: ${discoverLimiterInstance ? 'ACTIVE (fallback)' : 'INACTIVE'}`);
+      consecutiveFailures++;
+      
+      // Attempt reconnection after 3 consecutive failures
+      if (consecutiveFailures >= 3 && !isReconnecting) {
+        console.log(`[Redis Monitor] ${timestamp} - ${consecutiveFailures} consecutive failures, attempting reconnection...`);
+        await attemptReconnection();
+      }
       return;
     }
     
@@ -443,19 +508,30 @@ function startRedisMonitoring() {
       console.log(`[Redis Monitor] ${timestamp} - Rate limiter: ${discoverLimiterInstance ? 'ACTIVE (Redis-based)' : 'INACTIVE'}`);
       console.log(`[Redis Monitor] ${timestamp} - Redis store: ${redisStoreInstance ? 'ACTIVE' : 'INACTIVE'}`);
       
+      // Reset failure counter on successful ping
+      consecutiveFailures = 0;
+      
     } catch (pingError: any) {
       console.error(`[Redis Monitor] ${timestamp} - PING failed:`, pingError?.message || pingError);
       console.log(`[Redis Monitor] ${timestamp} - Redis connection appears to be broken`);
+      consecutiveFailures++;
+      
+      // Attempt reconnection after 3 consecutive ping failures
+      if (consecutiveFailures >= 3 && !isReconnecting) {
+        console.log(`[Redis Monitor] ${timestamp} - ${consecutiveFailures} consecutive ping failures, attempting reconnection...`);
+        await attemptReconnection();
+      }
     }
   }, 30000); // 30 seconds
 }
-
 function stopRedisMonitoring() {
   if (redisMonitorInterval) {
     console.log('[Redis Monitor] Stopping Redis monitoring');
     clearInterval(redisMonitorInterval);
     redisMonitorInterval = undefined;
   }
+  consecutiveFailures = 0; // Reset failure counter when stopping
+  isReconnecting = false; // Reset reconnection flag
 }
 
 // Initial calls to load settings at startup
