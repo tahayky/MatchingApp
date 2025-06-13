@@ -252,7 +252,7 @@ export async function updateDiscoverLimiter() {
           connectTimeout: 10000 // 10 seconds
         }
       });
-      console.log(`[Redis Debug] Redis client created, attempting connection...`);
+      console.log(`[Redis Debug] Redis client created, attempting connection....`);
       
       client.on('error', (err) => {
         console.error('[Redis Debug] Redis Client Error Details:');
