@@ -348,16 +348,65 @@ export async function updateDiscoverLimiter() {
       });
     console.log(`[RateLimiter Setup with Redis] express-rate-limit middleware configured with RedisStore. Max: ${currentMaxRateLimit}, Window: ${currentWindowMsRateLimit / 1000}s.`);
   } else {
-    console.error('[RateLimiter Setup with Redis] RedisStore instance is not available. Rate limiting will be bypassed.');
-    discoverLimiterInstance = undefined;
+    console.warn('[RateLimiter Setup] Redis not available, using memory-based rate limiting as fallback.');
+    // Create memory-based rate limiter as fallback
+    discoverLimiterInstance = rateLimit({
+      windowMs: currentWindowMsRateLimit,
+      max: currentMaxRateLimit,
+      message: { success: false, message: currentMessageRateLimit },
+      skipFailedRequests: true,
+      keyGenerator: (req: Request) => {
+        const authReq = req as AuthRequest;
+        return authReq.user?._id?.toString() || authReq.ip;
+      },
+      handler: (req: Request, res: Response, next: NextFunction, optionsUsed: any) => {
+        const authReq = req as AuthRequest;
+        const key = authReq.user?._id?.toString() || authReq.ip;
+        console.warn(`[RATE LIMIT EXCEEDED - Memory] For /discover. Key: ${key}. Max: ${optionsUsed.max}. Window: ${optionsUsed.windowMs / 1000}s.`);
+        res.status(optionsUsed.statusCode || 429).json(optionsUsed.message);
+      },
+      standardHeaders: true,
+      legacyHeaders: false,
+    });
+    console.log(`[RateLimiter Setup] Memory-based rate limiter created. Max: ${currentMaxRateLimit}, Window: ${currentWindowMsRateLimit / 1000}s.`);
   }
   console.log('[RateLimiter Setup with Redis] Exiting updateDiscoverLimiter function.');
 }
 
 // Redis Connection Monitor - Runs every 30 seconds
 let redisMonitorInterval: NodeJS.Timeout | undefined;
+let heartbeatEnabled = true; // Default enabled
+
+// Function to toggle Redis heartbeat monitoring
+export async function toggleRedisHeartbeat(enabled: boolean) {
+  heartbeatEnabled = enabled;
+  console.log(`[Redis Heartbeat] Heartbeat monitoring ${enabled ? 'ENABLED' : 'DISABLED'}`);
+  
+  if (enabled) {
+    startRedisMonitoring();
+  } else {
+    stopRedisMonitoring();
+  }
+}
+
+// Function to check heartbeat setting from database
+async function loadHeartbeatSetting() {
+  try {
+    const { default: AppSetting } = await import('../models/AppSetting');
+    const setting = await AppSetting.findOne({ key: 'redisHeartbeatEnabled' });
+    heartbeatEnabled = setting?.value?.enabled || true; // Default true
+    console.log(`[Redis Heartbeat] Loaded setting from DB: ${heartbeatEnabled ? 'ENABLED' : 'DISABLED'}`);
+  } catch (error) {
+    console.error('[Redis Heartbeat] Error loading heartbeat setting:', error);
+    heartbeatEnabled = true; // Default fallback
+  }
+}
 
 function startRedisMonitoring() {
+  if (!heartbeatEnabled) {
+    console.log('[Redis Monitor] Heartbeat is disabled, not starting monitoring');
+    return;
+  }
   if (redisMonitorInterval) {
     clearInterval(redisMonitorInterval);
   }
@@ -365,6 +414,12 @@ function startRedisMonitoring() {
   console.log('[Redis Monitor] Starting Redis connection monitoring (30 second intervals)');
   
   redisMonitorInterval = setInterval(async () => {
+    if (!heartbeatEnabled) {
+      console.log('[Redis Monitor] Heartbeat disabled during monitoring, stopping...');
+      stopRedisMonitoring();
+      return;
+    }
+    
     const timestamp = new Date().toISOString();
     console.log(`[Redis Monitor] ${timestamp} - Checking Redis status...`);
     
@@ -411,15 +466,29 @@ console.log('[userProfile-ts.ts] Setting up initial calls to updaters...');
     await updateDiscoverLimiter();
     console.log('[userProfile-ts.ts] Initial updateDiscoverLimiter() call successfully completed.');
     
-    // Start Redis monitoring
-    startRedisMonitoring();
-    console.log('[userProfile-ts.ts] Redis monitoring started');
+    // Load heartbeat setting first
+    await loadHeartbeatSetting();
+    
+    // Start Redis monitoring if enabled
+    if (heartbeatEnabled) {
+      startRedisMonitoring();
+      console.log('[userProfile-ts.ts] Redis monitoring started');
+    } else {
+      console.log('[userProfile-ts.ts] Redis monitoring disabled by setting');
+    }
   } catch (error) {
     console.error("[userProfile-ts.ts] CRITICAL ERROR during initial execution of updateDiscoverLimiter():", error);
     
-    // Still start monitoring even if initial setup failed
-    startRedisMonitoring();
-    console.log('[userProfile-ts.ts] Redis monitoring started (despite setup error)');
+    // Load heartbeat setting first
+    await loadHeartbeatSetting();
+    
+    // Still start monitoring even if initial setup failed (if enabled)
+    if (heartbeatEnabled) {
+      startRedisMonitoring();
+      console.log('[userProfile-ts.ts] Redis monitoring started (despite setup error)');
+    } else {
+      console.log('[userProfile-ts.ts] Redis monitoring disabled by setting (despite setup error)');
+    }
   }
   try {
     console.log('[userProfile-ts.ts] EXECUTING initial call to updateProfilesPerPageSetting()...');

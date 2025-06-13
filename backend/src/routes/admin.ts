@@ -615,4 +615,59 @@ router.put('/settings/profiles-per-page', isAdminAuthenticated, async (req: Requ
 });
 
 
+// --- Redis Heartbeat Settings ---
+const REDIS_HEARTBEAT_KEY = 'redisHeartbeatEnabled';
+
+// @route   GET /api/admin/settings/redis-heartbeat
+// @desc    Get the current Redis heartbeat setting
+// @access  Private (Admin)
+router.get('/settings/redis-heartbeat', isAdminAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const setting = await AppSetting.findOne({ key: REDIS_HEARTBEAT_KEY });
+    const enabled = setting?.value?.enabled || false;
+    res.json({ success: true, enabled });
+  } catch (error: unknown) {
+    console.error('Error fetching Redis heartbeat setting:', error);
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    res.status(500).json({ success: false, message });
+  }
+});
+
+// @route   PUT /api/admin/settings/redis-heartbeat
+// @desc    Update the Redis heartbeat setting
+// @access  Private (Admin)
+router.put('/settings/redis-heartbeat', isAdminAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const { enabled } = req.body;
+    
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ success: false, message: 'enabled must be a boolean value.' });
+    }
+
+    const updatedSetting = await AppSetting.findOneAndUpdate(
+      { key: REDIS_HEARTBEAT_KEY },
+      {
+        key: REDIS_HEARTBEAT_KEY,
+        value: { enabled },
+        description: 'Enable/disable Redis connection heartbeat monitoring'
+      },
+      { upsert: true, new: true }
+    );
+
+    // Import and call the heartbeat toggle function
+    const { toggleRedisHeartbeat } = await import('../routes/userProfile-ts');
+    await toggleRedisHeartbeat(enabled);
+
+    res.json({
+      success: true,
+      message: `Redis heartbeat ${enabled ? 'enabled' : 'disabled'} successfully.`,
+      enabled
+    });
+  } catch (error: unknown) {
+    console.error('Error updating Redis heartbeat setting:', error);
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    res.status(500).json({ success: false, message });
+  }
+});
+
 export default router;

@@ -36,9 +36,15 @@ export default function SettingsPage() { // Renamed component for clarity
   const [isLoadingProfilesPerPage, setIsLoadingProfilesPerPage] = useState<boolean>(true);
   const [isSavingProfilesPerPage, setIsSavingProfilesPerPage] = useState<boolean>(false);
 
+  // Redis Heartbeat States
+  const [heartbeatEnabled, setHeartbeatEnabled] = useState<boolean>(true);
+  const [isLoadingHeartbeat, setIsLoadingHeartbeat] = useState<boolean>(true);
+  const [isSavingHeartbeat, setIsSavingHeartbeat] = useState<boolean>(false);
+
   useEffect(() => {
     fetchRateLimitSettings();
     fetchProfilesPerPageSettings();
+    fetchHeartbeatSettings();
   }, []);
 
   const fetchRateLimitSettings = async () => {
@@ -99,6 +105,33 @@ export default function SettingsPage() { // Renamed component for clarity
       setProfilesPerPage(DEFAULT_PROFILES_PER_PAGE);
     } finally {
       setIsLoadingProfilesPerPage(false);
+    }
+  };
+
+  const fetchHeartbeatSettings = async () => {
+    setIsLoadingHeartbeat(true);
+    const token = getAdminToken();
+    if (!token) {
+      toast.error('Admin authentication token not found.');
+      setIsLoadingHeartbeat(false);
+      return;
+    }
+    try {
+      const apiUrl = getApiUrl('/admin/settings/redis-heartbeat');
+      const response = await axios.get(apiUrl, { headers: { 'Authorization': `Bearer ${token}` }, timeout: 30000 });
+      if (response.data.success) {
+        setHeartbeatEnabled(response.data.enabled || false);
+        toast.success('Redis heartbeat setting loaded.');
+      } else {
+        setHeartbeatEnabled(true); // Default enabled
+        toast.error(response.data.message || 'Failed to load heartbeat setting, using default.');
+      }
+    } catch (error: unknown) {
+      console.error('Error fetching heartbeat setting:', error);
+      handleAxiosError(error, 'fetching heartbeat setting');
+      setHeartbeatEnabled(true); // Default enabled
+    } finally {
+      setIsLoadingHeartbeat(false);
     }
   };
   
@@ -181,6 +214,32 @@ export default function SettingsPage() { // Renamed component for clarity
     }
   };
 
+  const handleHeartbeatToggle = async (enabled: boolean) => {
+    setIsSavingHeartbeat(true);
+    toast.info(`${enabled ? 'Enabling' : 'Disabling'} Redis heartbeat...`);
+    const token = getAdminToken();
+    if (!token) {
+      toast.error('Admin authentication token not found.');
+      setIsSavingHeartbeat(false);
+      return;
+    }
+    try {
+      const apiUrl = getApiUrl('/admin/settings/redis-heartbeat');
+      const response = await axios.put(apiUrl, { enabled }, { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, timeout: 30000 });
+      if (response.data.success) {
+        setHeartbeatEnabled(enabled);
+        toast.success(response.data.message || `Redis heartbeat ${enabled ? 'enabled' : 'disabled'} successfully!`);
+      } else {
+        toast.error(response.data.message || 'Failed to update heartbeat setting.');
+      }
+    } catch (error: unknown) {
+      console.error('Error updating heartbeat setting:', error);
+      handleAxiosError(error, 'updating heartbeat setting');
+    } finally {
+      setIsSavingHeartbeat(false);
+    }
+  };
+
   const triggerServerRefresh = async () => {
     const token = getAdminToken();
     if (!token) return; // Should not happen if previous checks passed
@@ -199,7 +258,7 @@ export default function SettingsPage() { // Renamed component for clarity
     }
   };
 
-  if (isLoadingRateLimit || isLoadingProfilesPerPage) {
+  if (isLoadingRateLimit || isLoadingProfilesPerPage || isLoadingHeartbeat) {
     return (
       <div className="flex items-center justify-center h-full p-6">
         <p>Loading settings...</p>
@@ -263,6 +322,37 @@ export default function SettingsPage() { // Renamed component for clarity
             </Button>
           </CardFooter>
         </form>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Redis Heartbeat Monitoring</CardTitle>
+          <CardDescription>
+            Enable or disable Redis connection monitoring and automatic reconnection attempts.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center space-x-2">
+            <input
+              id="heartbeatEnabled"
+              type="checkbox"
+              checked={heartbeatEnabled}
+              onChange={(e) => handleHeartbeatToggle(e.target.checked)}
+              disabled={isSavingHeartbeat}
+              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+            />
+            <Label htmlFor="heartbeatEnabled" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+              Enable Redis Heartbeat Monitoring
+            </Label>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            When enabled, the system will monitor Redis connection every 30 seconds and attempt to reconnect if disconnected.
+            Disable this if you want to reduce server logs or if Redis is not critical for your setup.
+          </p>
+          {isSavingHeartbeat && (
+            <p className="text-sm text-blue-600">Updating heartbeat setting...</p>
+          )}
+        </CardContent>
       </Card>
     </div>
   );
