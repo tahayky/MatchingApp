@@ -236,24 +236,62 @@ export async function updateDiscoverLimiter() {
   currentMessageRateLimit = newMessageString || DEFAULT_DISCOVER_RATE_LIMIT_CONFIG.message;
 
   const redisUrl = process.env.REDIS_URL;
+  console.log(`[Redis Debug] REDIS_URL environment variable: ${redisUrl ? 'SET' : 'NOT SET'}`);
+  if (redisUrl) {
+    console.log(`[Redis Debug] REDIS_URL value: ${redisUrl.substring(0, 20)}...`); // Only show first 20 chars for security
+  }
+
   if (!redisClient && redisUrl) {
     try {
-      console.log(`[RateLimiter Setup with Redis] Attempting to create Redis client with URL: ${redisUrl}`);
+      console.log(`[Redis Debug] Creating Redis client...`);
+      console.log(`[Redis Debug] Client options: { url: [HIDDEN], disableClientInfo: true }`);
       const client = createClient({
         url: redisUrl,
-        disableClientInfo: true // Add this option for Upstash compatibility
+        disableClientInfo: true,
+        socket: {
+          connectTimeout: 10000 // 10 seconds
+        }
       });
+      console.log(`[Redis Debug] Redis client created, attempting connection...`);
       
       client.on('error', (err) => {
-        console.error('[RateLimiter Setup with Redis] Redis Client Error:', err);
-        redisClient = undefined; // Ensure client is marked as unusable
+        console.error('[Redis Debug] Redis Client Error Details:');
+        console.error('  - Error Type:', err.constructor.name);
+        console.error('  - Error Message:', err.message);
+        console.error('  - Error Code:', err.code || 'NO_CODE');
+        console.error('  - Full Error:', err);
+        redisClient = undefined;
         redisStoreInstance = undefined;
-        discoverLimiterInstance = undefined; // Also disable limiter if Redis fails
+        discoverLimiterInstance = undefined;
       });
 
-      await client.connect();
-      console.log('[RateLimiter Setup with Redis] Redis client connected successfully.');
-      redisClient = client as RedisClientType; // Cast to RedisClientType after connect
+      client.on('connect', () => {
+        console.log('[Redis Debug] Redis client CONNECTED successfully');
+      });
+
+      client.on('ready', () => {
+        console.log('[Redis Debug] Redis client is READY for commands');
+      });
+
+      client.on('end', () => {
+        console.log('[Redis Debug] Redis connection ENDED');
+      });
+
+      try {
+        await client.connect();
+        console.log('[Redis Debug] Redis client connect() completed successfully');
+        
+        // Test the connection
+        const pingResult = await client.ping();
+        console.log('[Redis Debug] Redis PING test result:', pingResult);
+        
+        redisClient = client as RedisClientType;
+        console.log('[Redis Debug] Redis client assigned to global variable');
+      } catch (connectError) {
+        console.error('[Redis Debug] Failed to connect to Redis:');
+        console.error('  - Connect Error:', connectError);
+        throw connectError;
+      }
       
       // Create RedisStore instance
       // The 'sendCommand' option is crucial for compatibility with redis v4+
@@ -263,8 +301,12 @@ export async function updateDiscoverLimiter() {
       });
       console.log('[RateLimiter Setup with Redis] RedisStore instance CREATED successfully.');
 
-    } catch (err) {
-      console.error('[RateLimiter Setup with Redis] Failed to connect to Redis or create store:', err);
+    } catch (err: any) {
+      console.error('[Redis Debug] Complete Redis setup failed:');
+      console.error('  - Setup Error Type:', err?.constructor?.name || 'Unknown');
+      console.error('  - Setup Error Message:', err?.message || 'No message');
+      console.error('  - Setup Error Stack:', err?.stack || 'No stack');
+      console.error('[Redis Debug] Falling back to no Redis client');
       redisClient = undefined;
       redisStoreInstance = undefined;
     }
@@ -312,6 +354,55 @@ export async function updateDiscoverLimiter() {
   console.log('[RateLimiter Setup with Redis] Exiting updateDiscoverLimiter function.');
 }
 
+// Redis Connection Monitor - Runs every 30 seconds
+let redisMonitorInterval: NodeJS.Timeout | undefined;
+
+function startRedisMonitoring() {
+  if (redisMonitorInterval) {
+    clearInterval(redisMonitorInterval);
+  }
+  
+  console.log('[Redis Monitor] Starting Redis connection monitoring (30 second intervals)');
+  
+  redisMonitorInterval = setInterval(async () => {
+    const timestamp = new Date().toISOString();
+    console.log(`[Redis Monitor] ${timestamp} - Checking Redis status...`);
+    
+    if (!redisClient) {
+      console.log(`[Redis Monitor] ${timestamp} - Redis client: NOT CONNECTED`);
+      console.log(`[Redis Monitor] ${timestamp} - Rate limiter: ${discoverLimiterInstance ? 'ACTIVE (fallback)' : 'INACTIVE'}`);
+      return;
+    }
+    
+    try {
+      console.log(`[Redis Monitor] ${timestamp} - Redis client: CONNECTED`);
+      console.log(`[Redis Monitor] ${timestamp} - Redis client ready state: ${redisClient.isReady ? 'READY' : 'NOT READY'}`);
+      console.log(`[Redis Monitor] ${timestamp} - Redis client open state: ${redisClient.isOpen ? 'OPEN' : 'CLOSED'}`);
+      
+      // Test ping
+      const pingStart = Date.now();
+      const pingResult = await redisClient.ping();
+      const pingTime = Date.now() - pingStart;
+      console.log(`[Redis Monitor] ${timestamp} - PING result: ${pingResult} (${pingTime}ms)`);
+      
+      console.log(`[Redis Monitor] ${timestamp} - Rate limiter: ${discoverLimiterInstance ? 'ACTIVE (Redis-based)' : 'INACTIVE'}`);
+      console.log(`[Redis Monitor] ${timestamp} - Redis store: ${redisStoreInstance ? 'ACTIVE' : 'INACTIVE'}`);
+      
+    } catch (pingError: any) {
+      console.error(`[Redis Monitor] ${timestamp} - PING failed:`, pingError?.message || pingError);
+      console.log(`[Redis Monitor] ${timestamp} - Redis connection appears to be broken`);
+    }
+  }, 30000); // 30 seconds
+}
+
+function stopRedisMonitoring() {
+  if (redisMonitorInterval) {
+    console.log('[Redis Monitor] Stopping Redis monitoring');
+    clearInterval(redisMonitorInterval);
+    redisMonitorInterval = undefined;
+  }
+}
+
 // Initial calls to load settings at startup
 console.log('[userProfile-ts.ts] Setting up initial calls to updaters...');
 (async () => {
@@ -319,8 +410,16 @@ console.log('[userProfile-ts.ts] Setting up initial calls to updaters...');
     console.log('[userProfile-ts.ts] EXECUTING initial call to updateDiscoverLimiter()...');
     await updateDiscoverLimiter();
     console.log('[userProfile-ts.ts] Initial updateDiscoverLimiter() call successfully completed.');
+    
+    // Start Redis monitoring
+    startRedisMonitoring();
+    console.log('[userProfile-ts.ts] Redis monitoring started');
   } catch (error) {
     console.error("[userProfile-ts.ts] CRITICAL ERROR during initial execution of updateDiscoverLimiter():", error);
+    
+    // Still start monitoring even if initial setup failed
+    startRedisMonitoring();
+    console.log('[userProfile-ts.ts] Redis monitoring started (despite setup error)');
   }
   try {
     console.log('[userProfile-ts.ts] EXECUTING initial call to updateProfilesPerPageSetting()...');
