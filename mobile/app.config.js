@@ -1,26 +1,28 @@
 // app.config.js
-// Expo yapılandırma dosyası
+// Expo configuration file with Firebase integration
 module.exports = {
-  name: "mobile",
-  slug: "mobile",
+  name: "MatchingApp",
+  slug: "matchingapp",
   version: "1.0.0",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
-  scheme: "myapp",
+  scheme: "matchingapp",
   userInterfaceStyle: "automatic",
   
-  // React Native'in yeni mimarisi için işaretçi
-  // .env değerlerinin yüklenmesi sorunları yaşıyorsanız bunu devre dışı bırakmayı deneyin
+  // React Native's new architecture flag
   newArchEnabled: true,
   
   ios: {
-    supportsTablet: true
+    supportsTablet: true,
+    bundleIdentifier: "com.lambaapp.lambacorp"
   },
   android: {
     adaptiveIcon: {
       foregroundImage: "./assets/images/adaptive-icon.png",
       backgroundColor: "#ffffff"
-    }
+    },
+    package: "com.lambaapp.lambacorp",
+    googleServicesFile: "./google-services.json"
   },
   web: {
     bundler: "metro",
@@ -37,9 +39,16 @@ module.exports = {
         "resizeMode": "contain",
         "backgroundColor": "#ffffff"
       }
-    ]
+    ],
+    "@react-native-firebase/app",
+    "@react-native-firebase/crashlytics"
   ],
   experiments: {
     typedRoutes: true
+  },
+  extra: {
+    eas: {
+      projectId: "matchingapp-c439a"
+    }
   }
 };
