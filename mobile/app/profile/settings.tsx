@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { authService } from '@/services';
+import firebaseService from '@/services/firebaseService';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -66,6 +67,34 @@ export default function SettingsScreen() {
     } catch (error) {
       console.error('Error logging out:', error);
       Alert.alert('Error', 'Failed to logout');
+    }
+  };
+
+  const testFirebase = async () => {
+    try {
+      Alert.alert('Firebase Test', 'Testing Firebase connection...');
+      console.log('🔥 Starting Firebase test...');
+      
+      const result = await firebaseService.initializeAndTest();
+      
+      if (result.success) {
+        const projectInfo = firebaseService.getProjectInfo();
+        Alert.alert(
+          'Firebase Test ✅',
+          `Success!\n\nApp: ${result.appName}\nProject: ${result.projectId}\n\nCheck console for detailed logs.`,
+          [{ text: 'OK' }]
+        );
+        console.log('🔥 Firebase project info:', projectInfo);
+      } else {
+        Alert.alert(
+          'Firebase Test ❌',
+          `Failed: ${result.error}\n\nCheck console for details.`,
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('Firebase test error:', error);
+      Alert.alert('Error', 'Firebase test failed');
     }
   };
 
@@ -176,6 +205,15 @@ export default function SettingsScreen() {
             
             <TouchableOpacity style={[styles.settingButton, styles.dangerButton]}>
               <ThemedText style={styles.dangerButtonText}>Delete Account</ThemedText>
+            </TouchableOpacity>
+          </ThemedView>
+
+          <ThemedView style={styles.settingSection}>
+            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Developer Tools</ThemedText>
+            
+            <TouchableOpacity style={[styles.settingButton, styles.testButton]} onPress={testFirebase}>
+              <ThemedText style={styles.testButtonText}>🔥 Test Firebase Connection</ThemedText>
+              <ThemedText style={styles.settingDescription}>Test Firebase Analytics & Crashlytics integration</ThemedText>
             </TouchableOpacity>
           </ThemedView>
           
@@ -318,5 +356,19 @@ const styles = StyleSheet.create({
   },
   switchContainer: {
     transform: [{ scaleX: 1.1 }, { scaleY: 1.1 }],
+  },
+  testButton: {
+    backgroundColor: 'rgba(255, 152, 0, 0.1)',
+    borderWidth: 1,
+    borderColor: '#FF9800',
+    borderRadius: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    marginVertical: 8,
+  },
+  testButtonText: {
+    color: '#FF9800',
+    fontWeight: '600',
+    fontSize: 16,
   },
 });

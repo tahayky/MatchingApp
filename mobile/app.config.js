@@ -39,9 +39,7 @@ module.exports = {
         "resizeMode": "contain",
         "backgroundColor": "#ffffff"
       }
-    ],
-    "@react-native-firebase/app",
-    "@react-native-firebase/crashlytics"
+    ]
   ],
   experiments: {
     typedRoutes: true
