@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  StyleSheet, 
-  TouchableOpacity, 
-  ScrollView, 
-  Image, 
-  Alert, 
-  ActivityIndicator 
+import {
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Image,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -136,6 +137,12 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <ThemedView style={styles.header}>
           <ThemedText type="title" style={styles.headerTitle}>My Profile</ThemedText>
+          <TouchableOpacity
+            style={styles.settingsIcon}
+            onPress={() => router.push('/profile/settings')}
+          >
+            <Ionicons name="settings-outline" size={28} color="#2196F3" />
+          </TouchableOpacity>
         </ThemedView>
         
         <ThemedView style={styles.profileCard}>
@@ -266,13 +273,6 @@ export default function ProfileScreen() {
                 <ThemedText style={styles.buttonText}>Edit Profile</ThemedText>
               </TouchableOpacity>
             )}
-            
-            <TouchableOpacity
-              style={styles.button}
-              onPress={() => router.push('/profile/settings')}
-            >
-              <ThemedText style={styles.buttonText}>Settings</ThemedText>
-            </TouchableOpacity>
           </ThemedView>
         </ThemedView>
       </ScrollView>
@@ -292,13 +292,23 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingTop: 60,
     paddingBottom: 20,
-    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  settingsIcon: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(33, 150, 243, 0.1)',
   },
   headerTitle: {
     fontSize: 28,
-    marginBottom: 10,
+    flex: 1,
+    textAlign: 'center',
+    marginRight: 44, // Offset for the settings icon to keep title centered
   },
   profileCard: {
     margin: 16,
