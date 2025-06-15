@@ -41,7 +41,7 @@ export default function SettingsScreen() {
         // For now we just use default values
         
       } catch (error) {
-        console.log('Kullanıcı verisi yükleme hatası');
+        console.log('User data loading error');
       } finally {
         setLoading(false);
       }
@@ -56,7 +56,17 @@ export default function SettingsScreen() {
   
   const saveSettings = () => {
     // Here we would normally save settings to the server or local storage
-    Alert.alert("Başarılı", "Ayarlar kaydedildi");
+    Alert.alert("Success", "Settings saved");
+  };
+
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+      router.replace('/auth');
+    } catch (error) {
+      console.error('Error logging out:', error);
+      Alert.alert('Error', 'Failed to logout');
+    }
   };
 
   if (loading) {
@@ -72,30 +82,30 @@ export default function SettingsScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <ThemedView style={styles.header}>
           <TouchableOpacity onPress={handleGoBack} style={styles.backButton}>
-            <ThemedText style={styles.backButtonText}>← Geri</ThemedText>
+            <ThemedText style={styles.backButtonText}>← Back</ThemedText>
           </TouchableOpacity>
-          <ThemedText type="title" style={styles.headerTitle}>Ayarlar</ThemedText>
+          <ThemedText type="title" style={styles.headerTitle}>Settings</ThemedText>
           <ThemedView style={{ width: 50 }} />
         </ThemedView>
         
         <ThemedView style={styles.settingsCard}>
           <ThemedView style={styles.settingSection}>
-            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Abonelik Ayarları</ThemedText>
+            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Subscription Settings</ThemedText>
             
-            <TouchableOpacity 
-              style={styles.settingButton} 
+            <TouchableOpacity
+              style={styles.settingButton}
               onPress={() => router.push({ pathname: '/profile/subscription' } as any)}
             >
-              <ThemedText>Premium Abonelik</ThemedText>
-              <ThemedText style={styles.settingDescription}>Daha fazla beğeni hakkı kazanın</ThemedText>
+              <ThemedText>Premium Subscription</ThemedText>
+              <ThemedText style={styles.settingDescription}>Get more like rights</ThemedText>
             </TouchableOpacity>
           </ThemedView>
           
           <ThemedView style={styles.settingSection}>
-            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Görünüm Ayarları</ThemedText>
+            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Display Settings</ThemedText>
             
             <ThemedView style={styles.settingRow}>
-              <ThemedText>Karanlık Mod</ThemedText>
+              <ThemedText>Dark Mode</ThemedText>
               <Switch
                 value={darkModeEnabled}
                 onValueChange={setDarkModeEnabled}
@@ -104,12 +114,12 @@ export default function SettingsScreen() {
           </ThemedView>
           
           <ThemedView style={styles.settingSection}>
-            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Bildirim Ayarları</ThemedText>
+            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Notification Settings</ThemedText>
             
             <ThemedView style={styles.settingRow}>
               <ThemedView style={styles.settingInfo}>
-                <ThemedText>Bildirimleri Etkinleştir</ThemedText>
-                <ThemedText style={styles.settingDescription}>Yeni eşleşme, mesaj ve beğeni bildirimlerini al</ThemedText>
+                <ThemedText>Enable Notifications</ThemedText>
+                <ThemedText style={styles.settingDescription}>Get new match, message and like notifications</ThemedText>
               </ThemedView>
               <Switch
                 value={notificationsEnabled}
@@ -119,12 +129,12 @@ export default function SettingsScreen() {
           </ThemedView>
           
           <ThemedView style={styles.settingSection}>
-            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Gizlilik Ayarları</ThemedText>
+            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Privacy Settings</ThemedText>
             
             <ThemedView style={styles.settingRow}>
               <ThemedView style={styles.settingInfo}>
-                <ThemedText>Konum Paylaşımı</ThemedText>
-                <ThemedText style={styles.settingDescription}>Konumunuzu diğer kullanıcılarla paylaşın</ThemedText>
+                <ThemedText>Location Sharing</ThemedText>
+                <ThemedText style={styles.settingDescription}>Share your location with other users</ThemedText>
               </ThemedView>
               <Switch
                 value={locationEnabled}
@@ -133,7 +143,7 @@ export default function SettingsScreen() {
             </ThemedView>
             
             <ThemedView style={styles.settingRow}>
-              <ThemedText>Mesafe Göster</ThemedText>
+              <ThemedText>Show Distance</ThemedText>
               <Switch
                 value={showDistance}
                 onValueChange={setShowDistance}
@@ -141,7 +151,7 @@ export default function SettingsScreen() {
             </ThemedView>
             
             <ThemedView style={styles.settingRow}>
-              <ThemedText>Çevrimiçi Durumu Göster</ThemedText>
+              <ThemedText>Show Online Status</ThemedText>
               <Switch
                 value={showOnlineStatus}
                 onValueChange={setShowOnlineStatus}
@@ -150,30 +160,37 @@ export default function SettingsScreen() {
           </ThemedView>
           
           <ThemedView style={styles.settingSection}>
-            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Hesap Ayarları</ThemedText>
+            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Account Settings</ThemedText>
             
             <TouchableOpacity style={styles.settingButton}>
-              <ThemedText>Şifre Değiştir</ThemedText>
+              <ThemedText>Change Password</ThemedText>
             </TouchableOpacity>
             
             <TouchableOpacity style={styles.settingButton}>
-              <ThemedText>E-posta Değiştir</ThemedText>
+              <ThemedText>Change Email</ThemedText>
             </TouchableOpacity>
             
             <TouchableOpacity style={[styles.settingButton, styles.dangerButton]}>
-              <ThemedText style={styles.dangerButtonText}>Hesabı Dondur</ThemedText>
+              <ThemedText style={styles.dangerButtonText}>Freeze Account</ThemedText>
             </TouchableOpacity>
             
             <TouchableOpacity style={[styles.settingButton, styles.dangerButton]}>
-              <ThemedText style={styles.dangerButtonText}>Hesabı Sil</ThemedText>
+              <ThemedText style={styles.dangerButtonText}>Delete Account</ThemedText>
             </TouchableOpacity>
           </ThemedView>
           
-          <TouchableOpacity 
-            style={styles.saveButton} 
+          <TouchableOpacity
+            style={styles.saveButton}
             onPress={saveSettings}
           >
-            <ThemedText style={styles.saveButtonText}>Ayarları Kaydet</ThemedText>
+            <ThemedText style={styles.saveButtonText}>Save Settings</ThemedText>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.saveButton, styles.logoutButton]}
+            onPress={handleLogout}
+          >
+            <ThemedText style={styles.saveButtonText}>Logout</ThemedText>
           </TouchableOpacity>
         </ThemedView>
       </ScrollView>
@@ -267,5 +284,9 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  logoutButton: {
+    backgroundColor: '#f44336',
+    marginTop: 10,
   },
 });

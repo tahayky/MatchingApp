@@ -267,18 +267,11 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             )}
             
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.button}
               onPress={() => router.push('/profile/settings')}
             >
               <ThemedText style={styles.buttonText}>Settings</ThemedText>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.button, styles.logoutButton]} 
-              onPress={handleLogout}
-            >
-              <ThemedText style={styles.buttonText}>Logout</ThemedText>
             </TouchableOpacity>
           </ThemedView>
         </ThemedView>
