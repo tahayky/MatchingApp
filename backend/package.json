@@ -16,6 +16,8 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.50.0",
+    "@types/uuid": "^10.0.0",
     "axios": "^1.8.4",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
@@ -29,8 +31,10 @@
     "rate-limit-mongo": "^2.3.2",
     "rate-limit-redis": "^4.2.0",
     "redis": "^5.1.0",
+    "sharp": "^0.34.2",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

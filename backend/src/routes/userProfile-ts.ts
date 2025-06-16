@@ -11,45 +11,20 @@ import fs from 'fs';
 import User, { IUser, IPhoto, IPreferences, IRejectData, ILikeData } from '../models/User';
 import Match from '../models/Match';
 import { protect } from '../middleware/auth';
+import {
+  uploadPhoto,
+  uploadMultiplePhotos,
+  deleteFromSupabase,
+  photoUploadConfig,
+  PhotoUploadResult
+} from '../services/photoProcessor';
 
 interface AuthRequest extends Request {
   user?: IUser;
   file?: Express.Multer.File;
 }
 
-const storage = multer.diskStorage({
-  destination: function(req: AuthRequest, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) {
-    const uploadDir = 'uploads/profiles';
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: function(req: AuthRequest, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) {
-    if (!req.user || !req.user._id) {
-      return cb(new Error('User not authenticated for filename generation'), '');
-    }
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, `${req.user._id.toString()}-${uniqueSuffix}${path.extname(file.originalname)}`);
-  }
-});
-
-const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowedTypes = /jpeg|jpg|png|webp/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
-  if (extname && mimetype) {
-    return cb(null, true);
-  } else {
-    cb(new Error('Only images (jpeg, jpg, png, webp) are allowed') as any);
-  }
-};
-
-const upload = multer({ 
-  storage, 
-  fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }
-});
+// Old local storage configuration removed - now using Supabase Storage
 
 const router: Router = express.Router();
 
@@ -104,26 +79,189 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/photos', protect, upload.single('photo'), async (req: AuthRequest, res: Response) => {
+// Upload single photo with Supabase Storage
+router.post('/photos', protect, photoUploadConfig.single('photo'), async (req: AuthRequest, res: Response) => {
   try {
-    if (!req.user || !req.user._id) { return res.status(401).json({ success: false, message: 'Not authorized, user not found' });}
-    if (!req.file) { return res.status(400).json({ success: false, message: 'No file uploaded' });}
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+
     const user = await User.findById(req.user._id);
     if (!user) {
-      if (req.file?.path) fs.unlink(req.file.path, (err) => { if (err) console.error("Error deleting orphaned file:", err); });
       return res.status(404).json({ success: false, message: 'User not found. Please complete your profile first.' });
     }
-    const photoUrl = `/${req.file.path.replace(/\\/g, '/')}`;
+
+    // Upload photo to Supabase
+    const uploadResult: PhotoUploadResult = await uploadPhoto(req.file, req.user._id.toString());
+    
+    if (!uploadResult.success) {
+      return res.status(400).json({
+        success: false,
+        message: uploadResult.error || 'Failed to upload photo'
+      });
+    }
+
+    // Add photo to user's photos array
     user.photos = user.photos || [];
     const isMain = user.photos.length === 0;
-    user.photos.push({ url: photoUrl, isMain } as IPhoto);
+    const newPhoto: IPhoto = {
+      url: uploadResult.url!,
+      isMain
+    };
+    
+    user.photos.push(newPhoto);
     await user.save();
-    res.json({ success: true, photo: { url: photoUrl, isMain }, photos: user.photos });
+
+    res.json({
+      success: true,
+      photo: newPhoto,
+      photos: user.photos,
+      message: 'Photo uploaded successfully'
+    });
   } catch (error: unknown) {
     console.error('Upload photo error:', error);
-    if (req.file?.path) fs.unlink(req.file.path, (err) => { if (err) console.error("Error deleting file after DB error:", err); });
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    res.status(500).json({ success: false, message: 'Server error uploading photo', error: errorMessage });
+    res.status(500).json({
+      success: false,
+      message: 'Server error uploading photo',
+      error: errorMessage
+    });
+  }
+});
+
+// Upload multiple photos with Supabase Storage
+router.post('/photos/bulk', protect, photoUploadConfig.array('photos', 6), async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
+    }
+    
+    const files = req.files as Express.Multer.File[];
+    if (!files || files.length === 0) {
+      return res.status(400).json({ success: false, message: 'No files uploaded' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found. Please complete your profile first.' });
+    }
+
+    // Check if user already has too many photos
+    user.photos = user.photos || [];
+    if (user.photos.length + files.length > 6) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot upload ${files.length} photos. Maximum 6 photos allowed. You currently have ${user.photos.length} photos.`
+      });
+    }
+
+    // Upload photos to Supabase
+    const uploadResults = await uploadMultiplePhotos(files, req.user._id.toString());
+    
+    const successfulUploads: IPhoto[] = [];
+    const failedUploads: string[] = [];
+
+    uploadResults.forEach((result, index) => {
+      if (result.success && result.url) {
+        const isMain = user.photos.length === 0 && successfulUploads.length === 0;
+        const newPhoto: IPhoto = {
+          url: result.url,
+          isMain
+        };
+        successfulUploads.push(newPhoto);
+        user.photos.push(newPhoto);
+      } else {
+        failedUploads.push(result.error || `Failed to upload file ${index + 1}`);
+      }
+    });
+
+    if (successfulUploads.length > 0) {
+      await user.save();
+    }
+
+    res.json({
+      success: true,
+      uploadedPhotos: successfulUploads,
+      failedUploads: failedUploads,
+      totalPhotos: user.photos,
+      message: `Successfully uploaded ${successfulUploads.length} out of ${files.length} photos`
+    });
+  } catch (error: unknown) {
+    console.error('Bulk upload photos error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    res.status(500).json({
+      success: false,
+      message: 'Server error uploading photos',
+      error: errorMessage
+    });
+  }
+});
+
+// Delete photo
+router.delete('/photos/:photoId', protect, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
+    }
+    
+    const { photoId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(photoId)) {
+      return res.status(400).json({ success: false, message: 'Invalid photo ID' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    user.photos = user.photos || [];
+    const photoIndex = user.photos.findIndex(photo => photo._id && photo._id.toString() === photoId);
+    
+    if (photoIndex === -1) {
+      return res.status(404).json({ success: false, message: 'Photo not found in user profile' });
+    }
+
+    const photoToDelete = user.photos[photoIndex];
+    const wasMain = photoToDelete.isMain;
+
+    // Extract filename from URL for Supabase deletion
+    const urlParts = photoToDelete.url.split('/');
+    const filename = urlParts[urlParts.length - 1];
+    const userFolder = req.user._id.toString();
+    const fullPath = `${userFolder}/${filename}`;
+
+    // Delete from Supabase Storage
+    const deleteSuccess = await deleteFromSupabase(fullPath);
+    if (!deleteSuccess) {
+      console.warn('Failed to delete photo from Supabase Storage, but continuing with database cleanup');
+    }
+
+    // Remove from user's photos array
+    user.photos.splice(photoIndex, 1);
+
+    // If deleted photo was main and there are other photos, make the first one main
+    if (wasMain && user.photos.length > 0) {
+      user.photos[0].isMain = true;
+    }
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Photo deleted successfully',
+      photos: user.photos
+    });
+  } catch (error: unknown) {
+    console.error('Delete photo error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    res.status(500).json({
+      success: false,
+      message: 'Server error deleting photo',
+      error: errorMessage
+    });
   }
 });
 

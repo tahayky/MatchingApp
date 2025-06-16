@@ -13,6 +13,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { authService } from '@/services';
 import { OfflineNotice } from '@/components/OfflineNotice';
 import { checkInternetConnection } from '@/utils/networkUtils';
+import firebaseService from '@/services/firebaseService';
 
 // Ensure splash screen setup is correct
 try {
@@ -42,6 +43,10 @@ export default function RootLayout() {
     
     const initialize = async () => {
       try {
+        // Firebase'i başlangıçta initialize et
+        console.log('🔥 [App] Initializing Firebase on app start...');
+        await firebaseService.initialize();
+        
         // İnternet bağlantısı kontrolü
         const hasConnection = await checkInternetConnection();
         setIsConnected(hasConnection);
