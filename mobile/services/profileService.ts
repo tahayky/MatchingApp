@@ -161,7 +161,7 @@ const profileService = {
       }
       const response = await apiClient.post('/users/profile/photos', photoFile, {
         headers: {
-          'Content-Type': 'multipart/form-data',
+          // Content-Type'ı manuel set etmeyin, axios otomatik boundary set eder
         },
       });
       return response.data;
@@ -190,7 +190,7 @@ const profileService = {
       }
       const response = await apiClient.post('/users/profile/photos/bulk', photoFiles, {
         headers: {
-          'Content-Type': 'multipart/form-data',
+          // Content-Type'ı manuel set etmeyin, axios otomatik boundary set eder
         },
       });
       return response.data;

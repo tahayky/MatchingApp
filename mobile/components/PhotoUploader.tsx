@@ -37,26 +37,24 @@ export default function PhotoUploader({
   const [uploading, setUploading] = useState(false);
   const [loadingPhotoId, setLoadingPhotoId] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Request permissions when component mounts
-    requestPermissions();
-  }, []);
-
-  const requestPermissions = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(
-        'Permission Required',
-        'We need access to your photo library to upload photos.',
-        [{ text: 'OK' }]
-      );
-    }
-  };
+  // Permission request functions removed from useEffect
+  // Now they will be called only when user tries to use the functionality
 
   const pickImage = async () => {
     try {
       if (photos.length >= maxPhotos) {
         Alert.alert('Maximum Photos', `You can only upload up to ${maxPhotos} photos.`);
+        return;
+      }
+
+      // Request permission only when user tries to access photo library
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required',
+          'We need access to your photo library to upload photos.',
+          [{ text: 'OK' }]
+        );
         return;
       }
 
@@ -84,6 +82,7 @@ export default function PhotoUploader({
         return;
       }
 
+      // Request camera permission only when user tries to use camera
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert(
@@ -114,11 +113,27 @@ export default function PhotoUploader({
       setUploading(true);
 
       const formData = new FormData();
+      
+      // Asset'ten mime type'ı al, yoksa default kullan
+      const mimeType = asset.mimeType || 'image/jpeg';
+      
+      // File extension'ı mime type'dan çıkar
+      let extension = 'jpg';
+      if (mimeType.includes('png')) extension = 'png';
+      else if (mimeType.includes('webp')) extension = 'webp';
+      
       formData.append('photo', {
         uri: asset.uri,
-        type: 'image/jpeg',
-        name: 'photo.jpg',
+        type: mimeType,
+        name: `photo.${extension}`,
       } as any);
+      
+      console.log('Uploading photo:', {
+        uri: asset.uri,
+        type: mimeType,
+        name: `photo.${extension}`,
+        size: asset.fileSize
+      });
 
       const response = await profileService.uploadProfilePhoto(formData);
 
