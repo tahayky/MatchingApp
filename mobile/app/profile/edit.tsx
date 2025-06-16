@@ -1,19 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  StyleSheet, 
-  TextInput, 
-  TouchableOpacity, 
-  ActivityIndicator, 
-  Alert, 
-  KeyboardAvoidingView, 
-  Platform, 
+import {
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
-  View 
+  View
 } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import PhotoUploader from '@/components/PhotoUploader';
 import { profileService, authService } from '@/services';
 import { ProfileData } from '@/services/profileService';
 
@@ -22,6 +23,7 @@ export default function EditProfileScreen() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState<any>(null);
+  const [photos, setPhotos] = useState<any[]>([]);
   const [formData, setFormData] = useState<ProfileData>({
     bio: '',
     city: '',
@@ -49,6 +51,7 @@ export default function EditProfileScreen() {
         const response = await profileService.getMyProfile();
         if (response.success && response.profile) {
           setProfile(response.profile);
+          setPhotos(response.profile.photos || []);
           // Populate form with existing data
           setFormData({
             bio: response.profile.bio || '',
@@ -159,6 +162,12 @@ export default function EditProfileScreen() {
           </ThemedView>
           
           <ThemedView style={styles.form}>
+            <PhotoUploader
+              photos={photos}
+              onPhotosUpdate={setPhotos}
+              maxPhotos={6}
+            />
+            
             <ThemedView style={styles.inputContainer}>
               <ThemedText>Bio</ThemedText>
               <TextInput

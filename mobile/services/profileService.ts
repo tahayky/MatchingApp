@@ -149,9 +149,9 @@ const profileService = {
     }
   },
 
-  async uploadProfilePhoto(photoFile: FormData): Promise<{ success: boolean; photo: { url: string; isMain: boolean }, photos?: any[] }> {
+  async uploadProfilePhoto(photoFile: FormData): Promise<{ success: boolean; photo?: { url: string; isMain: boolean }, photos?: any[], message?: string }> {
     if (!(await isAuthenticated())) {
-      return { success: false, message: 'Not authenticated', photo: { url: '', isMain: false } } as any;
+      return { success: false, message: 'Not authenticated' };
     }
 
     try {
@@ -164,10 +164,62 @@ const profileService = {
           'Content-Type': 'multipart/form-data',
         },
       });
-      return response.data; 
-    } catch (error) {
+      return response.data;
+    } catch (error: any) {
       console.error('Error uploading photo:', error);
-      return { success: false, message: 'Error uploading photo', photo: { url: '', isMain: false } } as any;
+      const errorMessage = error.response?.data?.message || error.message || 'Error uploading photo';
+      return { success: false, message: errorMessage };
+    }
+  },
+
+  async uploadMultiplePhotos(photoFiles: FormData): Promise<{
+    success: boolean;
+    uploadedPhotos?: any[];
+    failedUploads?: string[];
+    totalPhotos?: any[];
+    message?: string;
+  }> {
+    if (!(await isAuthenticated())) {
+      return { success: false, message: 'Not authenticated' };
+    }
+
+    try {
+      const isConnected = await checkInternetConnection();
+      if (!isConnected) {
+        throw new Error('No internet connection');
+      }
+      const response = await apiClient.post('/users/profile/photos/bulk', photoFiles, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('Error uploading multiple photos:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Error uploading photos';
+      return { success: false, message: errorMessage };
+    }
+  },
+
+  async deletePhoto(photoId: string): Promise<{ success: boolean; message?: string; photos?: any[] }> {
+    if (!(await isAuthenticated())) {
+      return { success: false, message: 'Not authenticated' };
+    }
+
+    try {
+      const isConnected = await checkInternetConnection();
+      if (!isConnected) {
+        return {
+          success: false,
+          message: 'No internet connection, cannot delete photo'
+        };
+      }
+      const response = await apiClient.delete(`/users/profile/photos/${photoId}`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Error deleting photo:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Error deleting photo';
+      return { success: false, message: errorMessage };
     }
   },
 
