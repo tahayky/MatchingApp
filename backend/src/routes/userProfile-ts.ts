@@ -16,7 +16,8 @@ import {
   uploadMultiplePhotos,
   deleteFromSupabase,
   photoUploadConfig,
-  PhotoUploadResult
+  PhotoUploadResult,
+  getMultiplePhotoUrls
 } from '../services/photoProcessor';
 
 interface AuthRequest extends Request {
@@ -68,9 +69,43 @@ router.post('/', protect, async (req: AuthRequest, res: Response) => {
 
 router.get('/me', protect, async (req: AuthRequest, res: Response) => {
   try {
-    if (!req.user || !req.user._id) { return res.status(401).json({ success: false, message: 'Not authorized, user not found'}); }
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ success: false, message: 'Not authorized, user not found'});
+    }
+    
     const userProfile = await User.findById(req.user._id).select('-password');
-    if (!userProfile) { return res.status(404).json({ success: false, message: 'User profile not found. Please complete your profile.'});}
+    if (!userProfile) {
+      return res.status(404).json({ success: false, message: 'User profile not found. Please complete your profile.'});
+    }
+
+    // Fotoğraf URL'lerini dinamik olarak cache'den al
+    if (userProfile.photos && userProfile.photos.length > 0) {
+      const photoFilenames = userProfile.photos
+        .map(photo => {
+          // URL'den filename çıkar (sadece dosya yolunu al)
+          const urlParts = photo.url.split('/');
+          return urlParts[urlParts.length - 1].split('?')[0]; // Query params'i temizle
+        })
+        .filter(filename => filename && filename !== '');
+
+      if (photoFilenames.length > 0) {
+        console.log(`[Profile /me] Getting cached URLs for ${photoFilenames.length} photos`);
+        const cachedUrls = await getMultiplePhotoUrls(photoFilenames);
+        
+        // Fotoğraf URL'lerini güncelle
+        userProfile.photos = userProfile.photos.map(photo => {
+          const urlParts = photo.url.split('/');
+          const filename = urlParts[urlParts.length - 1].split('?')[0];
+          const cachedUrl = cachedUrls[filename];
+          
+          return {
+            ...photo.toObject(),
+            url: cachedUrl || photo.url // Cache'de yoksa eski URL'yi kullan
+          };
+        });
+      }
+    }
+
     res.json({ success: true, user: userProfile });
   } catch (error: unknown) {
     console.error('Get my profile error:', error);

@@ -1,13 +1,57 @@
 import { createClient } from '@supabase/supabase-js';
+import { createClient as createRedisClient, RedisClientType } from 'redis';
 import multer from 'multer';
 import path from 'path';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 
 // Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_ANON_KEY!;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('⚠️ SUPABASE_URL ve SUPABASE_ANON_KEY environment variable\'ları eksik!');
+  console.error('Lütfen .env dosyasına ekleyin:');
+  console.error('SUPABASE_URL=https://yourproject.supabase.co');
+  console.error('SUPABASE_ANON_KEY=your-anon-key-here');
+  throw new Error('Supabase configuration missing. Check environment variables.');
+}
+
 const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Redis client setup
+let redisClient: RedisClientType | undefined;
+
+const initializeRedis = async () => {
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    console.warn('[Photo Cache] REDIS_URL not found, photo URL caching disabled');
+    return;
+  }
+
+  try {
+    if (!redisClient) {
+      redisClient = createRedisClient({
+        url: redisUrl,
+        socket: { connectTimeout: 10000 }
+      });
+
+      redisClient.on('error', (err) => {
+        console.error('[Photo Cache] Redis Error:', err);
+        redisClient = undefined;
+      });
+
+      await redisClient.connect();
+      console.log('[Photo Cache] Redis connected successfully');
+    }
+  } catch (error) {
+    console.error('[Photo Cache] Redis connection failed:', error);
+    redisClient = undefined;
+  }
+};
+
+// Initialize Redis on module load
+initializeRedis();
 
 // Constants
 const STORAGE_BUCKET = 'user-photos';
@@ -114,21 +158,22 @@ export const uploadToSupabase = async (
       };
     }
 
-    // Get public URL
-    const { data: publicUrlData } = supabase.storage
+    // Private bucket için signed URL oluştur (5 dakika geçerli)
+    const { data: signedUrlData, error: urlError } = await supabase.storage
       .from(STORAGE_BUCKET)
-      .getPublicUrl(filename);
+      .createSignedUrl(filename, 5 * 60); // 5 dakika
 
-    if (!publicUrlData.publicUrl) {
+    if (urlError || !signedUrlData?.signedUrl) {
+      console.error('Signed URL creation error:', urlError);
       return {
         success: false,
-        error: 'Failed to get public URL for uploaded photo'
+        error: 'Failed to get signed URL for uploaded photo'
       };
     }
 
     return {
       success: true,
-      url: publicUrlData.publicUrl,
+      url: signedUrlData.signedUrl,
       filename: filename
     };
   } catch (error) {
@@ -153,6 +198,9 @@ export const deleteFromSupabase = async (filename: string): Promise<boolean> => 
       console.error('Supabase delete error:', error);
       return false;
     }
+
+    // Fotoğraf silindiğinde cache'i de temizle
+    await clearPhotoCache(filename);
 
     return true;
   } catch (error) {
@@ -230,12 +278,109 @@ export const uploadMultiplePhotos = async (
 };
 
 /**
- * Get photo URL from filename
+ * Get cached photo URL from Redis or create new 5-minute signed URL
  */
-export const getPhotoUrl = (filename: string): string => {
-  const { data } = supabase.storage
-    .from(STORAGE_BUCKET)
-    .getPublicUrl(filename);
+export const getPhotoUrl = async (filename: string): Promise<string | null> => {
+  const CACHE_DURATION = (5 * 60) - 30; // 4.5 dakika (30 saniye erken expire)
+  const SIGNED_URL_DURATION = 5 * 60; // 5 dakika signed URL
+  const cacheKey = `photo_url:${filename}`;
+
+  try {
+    // 1. Redis'te cached URL var mı kontrol et
+    if (redisClient) {
+      try {
+        const cachedUrl = await redisClient.get(cacheKey);
+        if (cachedUrl) {
+          console.log(`[Photo Cache] Cache HIT for ${filename}`);
+          return cachedUrl;
+        }
+        console.log(`[Photo Cache] Cache MISS for ${filename}`);
+      } catch (redisError) {
+        console.error('[Photo Cache] Redis get error:', redisError);
+        // Redis hatası olursa direkt Supabase'e git
+      }
+    }
+
+    // 2. Yeni 5 dakikalık signed URL oluştur
+    const { data, error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .createSignedUrl(filename, SIGNED_URL_DURATION);
+    
+    if (error || !data?.signedUrl) {
+      console.error('Error creating signed URL:', error);
+      return null;
+    }
+
+    // 3. URL'yi Redis'e 5 dakika süreyle cache'le
+    if (redisClient) {
+      try {
+        await redisClient.setEx(cacheKey, CACHE_DURATION, data.signedUrl);
+        console.log(`[Photo Cache] Cached new URL for ${filename} (5 min)`);
+      } catch (redisError) {
+        console.error('[Photo Cache] Redis set error:', redisError);
+        // Redis hatası olsa bile URL'yi döndür
+      }
+    }
+
+    return data.signedUrl;
+  } catch (error) {
+    console.error('Error getting photo URL:', error);
+    return null;
+  }
+};
+
+/**
+ * Batch get photo URLs with intelligent caching
+ */
+export const getMultiplePhotoUrls = async (filenames: string[]): Promise<{ [filename: string]: string | null }> => {
+  const results: { [filename: string]: string | null } = {};
   
-  return data.publicUrl;
+  // Paralel olarak tüm URL'leri al
+  const promises = filenames.map(async (filename) => {
+    const url = await getPhotoUrl(filename);
+    return { filename, url };
+  });
+
+  const urlResults = await Promise.all(promises);
+  
+  // Sonuçları organize et
+  urlResults.forEach(({ filename, url }) => {
+    results[filename] = url;
+  });
+
+  return results;
+};
+
+/**
+ * Clear photo URL cache for specific filename
+ */
+export const clearPhotoCache = async (filename: string): Promise<void> => {
+  if (!redisClient) return;
+
+  const cacheKey = `photo_url:${filename}`;
+  try {
+    await redisClient.del(cacheKey);
+    console.log(`[Photo Cache] Cleared cache for ${filename}`);
+  } catch (error) {
+    console.error('[Photo Cache] Error clearing cache:', error);
+  }
+};
+
+/**
+ * Clear all photo URL caches for a user
+ */
+export const clearUserPhotoCache = async (userId: string): Promise<void> => {
+  if (!redisClient) return;
+
+  try {
+    const pattern = `photo_url:${userId}/*`;
+    const keys = await redisClient.keys(pattern);
+    
+    if (keys.length > 0) {
+      await redisClient.del(keys);
+      console.log(`[Photo Cache] Cleared ${keys.length} cached URLs for user ${userId}`);
+    }
+  } catch (error) {
+    console.error('[Photo Cache] Error clearing user cache:', error);
+  }
 };
