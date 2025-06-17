@@ -37,11 +37,7 @@ const initializeRedis = async () => {
         url: redisUrl,
         socket: {
           connectTimeout: 10000
-        },
-        // Upstash Redis uyumluluğu için
-        disableOfflineQueue: true,
-        retryDelayOnFailover: 100,
-        maxRetriesPerRequest: 3
+        }
       });
 
       redisClient.on('error', (err) => {
