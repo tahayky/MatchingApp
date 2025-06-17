@@ -85,8 +85,8 @@ const initializeRedis = async () => {
   }
 };
 
-// Initialize Redis on module load
-initializeRedis();
+// Redis will be initialized lazily when first needed
+// No automatic initialization on module load to prevent repeated connections
 
 // Constants
 const STORAGE_BUCKET = 'user-photos';
@@ -321,6 +321,9 @@ export const getPhotoUrl = async (filename: string): Promise<string | null> => {
   const cacheKey = `photo_url:${filename}`;
 
   try {
+    // Redis'i lazy initialize et
+    await initializeRedis();
+    
     // 1. Redis'te cached URL var mı kontrol et
     if (redisClient) {
       try {
@@ -370,6 +373,9 @@ export const getPhotoUrl = async (filename: string): Promise<string | null> => {
 export const getMultiplePhotoUrls = async (filenames: string[]): Promise<{ [filename: string]: string | null }> => {
   const results: { [filename: string]: string | null } = {};
   
+  // Redis'i lazy initialize et
+  await initializeRedis();
+  
   // Paralel olarak tüm URL'leri al
   const promises = filenames.map(async (filename) => {
     const url = await getPhotoUrl(filename);
@@ -390,6 +396,9 @@ export const getMultiplePhotoUrls = async (filenames: string[]): Promise<{ [file
  * Clear photo URL cache for specific filename
  */
 export const clearPhotoCache = async (filename: string): Promise<void> => {
+  // Redis'i lazy initialize et
+  await initializeRedis();
+  
   if (!redisClient) return;
 
   const cacheKey = `photo_url:${filename}`;
@@ -405,6 +414,9 @@ export const clearPhotoCache = async (filename: string): Promise<void> => {
  * Clear all photo URL caches for a user
  */
 export const clearUserPhotoCache = async (userId: string): Promise<void> => {
+  // Redis'i lazy initialize et
+  await initializeRedis();
+  
   if (!redisClient) return;
 
   try {
