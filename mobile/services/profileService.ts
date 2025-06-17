@@ -161,7 +161,7 @@ const profileService = {
       }
       const response = await apiClient.post('/users/profile/photos', photoFile, {
         headers: {
-          // Content-Type'ı manuel set etmeyin, axios otomatik boundary set eder
+          'Content-Type': undefined, // FormData için boundary otomatik eklensin
         },
       });
       return response.data;
