@@ -23,6 +23,7 @@ console.log('✅ Supabase client initialized with SERVICE ROLE for private bucke
 
 // Redis client setup
 let redisClient: RedisClientType | undefined;
+let isConnecting = false;
 
 const initializeRedis = async () => {
   const redisUrl = process.env.REDIS_URL;
@@ -31,8 +32,16 @@ const initializeRedis = async () => {
     return;
   }
 
+  // Eğer zaten bağlıysa veya bağlanmaya çalışıyorsa tekrar deneme
+  if (redisClient?.isOpen || isConnecting) {
+    return;
+  }
+
   try {
+    isConnecting = true;
+    
     if (!redisClient) {
+      console.log('[Photo Cache] Initializing Redis connection...');
       redisClient = createRedisClient({
         url: redisUrl,
         socket: {
@@ -41,17 +50,30 @@ const initializeRedis = async () => {
       });
 
       redisClient.on('error', (err) => {
-        console.warn('[Photo Cache] Redis Warning (Upstash uyumluluk):', err.message);
-        // Upstash uyumluluk hataları için client'ı kapatma
-        if (err.message.includes('Command is not available') || err.message.includes('CLIENT SETINFO')) {
-          console.log('[Photo Cache] Ignoring Upstash compatibility warning');
+        // Upstash Redis belirli komutları desteklemiyor (bu normal)
+        if (err.message.includes('Command is not available')) {
+          if (err.message.includes('CLIENT SETINFO') || err.message.includes('CLIENT GETNAME')) {
+            // Bu hatayı hiç loglamayalım - çok normal
+            return;
+          }
+          console.warn('[Photo Cache] ⚠️  Upstash desteklenmeyen komut:', err.message);
           return;
         }
+        
+        // Gerçek bağlantı hataları
+        console.error('[Photo Cache] ❌ Redis bağlantı hatası:', err);
         redisClient = undefined;
+        isConnecting = false;
       });
 
       redisClient.on('connect', () => {
-        console.log('[Photo Cache] Redis connected to Upstash successfully');
+        console.log('[Photo Cache] ✅ Redis connected to Upstash successfully');
+        isConnecting = false;
+      });
+
+      redisClient.on('disconnect', () => {
+        console.log('[Photo Cache] 🔌 Redis disconnected');
+        isConnecting = false;
       });
 
       await redisClient.connect();
@@ -59,6 +81,7 @@ const initializeRedis = async () => {
   } catch (error) {
     console.error('[Photo Cache] Redis connection failed:', error);
     redisClient = undefined;
+    isConnecting = false;
   }
 };
 
