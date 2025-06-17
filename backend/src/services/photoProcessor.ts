@@ -35,16 +35,31 @@ const initializeRedis = async () => {
     if (!redisClient) {
       redisClient = createRedisClient({
         url: redisUrl,
-        socket: { connectTimeout: 10000 }
+        socket: {
+          connectTimeout: 10000,
+          reconnectDelay: 1000
+        },
+        // Upstash Redis uyumluluğu için
+        disableOfflineQueue: true,
+        retryDelayOnFailover: 100,
+        maxRetriesPerRequest: 3
       });
 
       redisClient.on('error', (err) => {
-        console.error('[Photo Cache] Redis Error:', err);
+        console.warn('[Photo Cache] Redis Warning (Upstash uyumluluk):', err.message);
+        // Upstash uyumluluk hataları için client'ı kapatma
+        if (err.message.includes('Command is not available') || err.message.includes('CLIENT SETINFO')) {
+          console.log('[Photo Cache] Ignoring Upstash compatibility warning');
+          return;
+        }
         redisClient = undefined;
       });
 
+      redisClient.on('connect', () => {
+        console.log('[Photo Cache] Redis connected to Upstash successfully');
+      });
+
       await redisClient.connect();
-      console.log('[Photo Cache] Redis connected successfully');
     }
   } catch (error) {
     console.error('[Photo Cache] Redis connection failed:', error);
