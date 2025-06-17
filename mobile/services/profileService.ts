@@ -160,8 +160,10 @@ const profileService = {
         throw new Error('No internet connection');
       }
       const response = await apiClient.post('/users/profile/photos', photoFile, {
-        headers: {
-          'Content-Type': undefined, // FormData için boundary otomatik eklensin
+        transformRequest: (data, headers) => {
+          // FormData için Content-Type header'ını kaldır, axios otomatik eklesin
+          delete headers['Content-Type'];
+          return data;
         },
       });
       return response.data;
