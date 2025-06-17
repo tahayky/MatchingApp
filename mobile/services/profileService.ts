@@ -159,13 +159,7 @@ const profileService = {
       if (!isConnected) {
         throw new Error('No internet connection');
       }
-      const response = await apiClient.post('/users/profile/photos', photoFile, {
-        transformRequest: (data, headers) => {
-          // FormData için Content-Type header'ını kaldır, axios otomatik eklesin
-          delete headers['Content-Type'];
-          return data;
-        },
-      });
+      const response = await apiClient.post('/users/profile/photos', photoFile);
       return response.data;
     } catch (error: any) {
       console.error('Error uploading photo:', error);

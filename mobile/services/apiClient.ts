@@ -49,6 +49,15 @@ const apiClient = axios.create({
   },
 });
 
+// FormData istekleri için Content-Type'ı otomatik düzelt
+apiClient.interceptors.request.use((config) => {
+  // Eğer data FormData ise Content-Type'ı kaldır, axios otomatik eklesin
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
+  }
+  return config;
+});
+
 // Tam URL loglama
 console.log('👉 API Bağlantı URL:', currentApiUrl);
 // Test Loglama - Tam URL'nin nasıl görüldüğünü görelim
