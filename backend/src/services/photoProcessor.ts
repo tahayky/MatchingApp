@@ -5,19 +5,21 @@ import path from 'path';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 
-// Initialize Supabase client
+// Initialize Supabase client with SERVICE ROLE for private bucket access
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE;
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error('⚠️ SUPABASE_URL ve SUPABASE_ANON_KEY environment variable\'ları eksik!');
-  console.error('Lütfen .env dosyasına ekleyin:');
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error('⚠️ SUPABASE_URL ve SUPABASE_SERVICE_ROLE environment variable\'ları eksik!');
+  console.error('Private bucket erişimi için SERVICE ROLE key gerekli!');
+  console.error('Lütfen environment\'a ekleyin:');
   console.error('SUPABASE_URL=https://yourproject.supabase.co');
-  console.error('SUPABASE_ANON_KEY=your-anon-key-here');
-  throw new Error('Supabase configuration missing. Check environment variables.');
+  console.error('SUPABASE_SERVICE_ROLE=your-service-role-key-here');
+  throw new Error('Supabase SERVICE ROLE configuration missing. Private bucket requires service key.');
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+console.log('✅ Supabase client initialized with SERVICE ROLE for private bucket access');
 
 // Redis client setup
 let redisClient: RedisClientType | undefined;
