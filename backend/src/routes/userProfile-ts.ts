@@ -118,11 +118,19 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
 // Upload single photo with Supabase Storage
 router.post('/photos', protect, photoUploadConfig.single('photo'), async (req: AuthRequest, res: Response) => {
   try {
+    console.log('[Photo Upload] Headers:', req.headers);
+    console.log('[Photo Upload] Content-Type:', req.headers['content-type']);
+    console.log('[Photo Upload] Body keys:', Object.keys(req.body));
+    console.log('[Photo Upload] File object:', req.file);
+    console.log('[Photo Upload] Raw body type:', typeof req.body);
+    
     if (!req.user || !req.user._id) {
       return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
     }
     if (!req.file) {
-      return res.status(400).json({ success: false, message: 'No file uploaded' });
+      console.log('[Photo Upload] ERROR: No file uploaded - req.file is null/undefined');
+      console.log('[Photo Upload] Available request properties:', Object.keys(req));
+      return res.status(400).json({ success: false, message: 'No file uploaded - check FormData format' });
     }
 
     const user = await User.findById(req.user._id);
