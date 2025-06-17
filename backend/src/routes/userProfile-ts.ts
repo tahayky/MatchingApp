@@ -99,8 +99,9 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
           const cachedUrl = cachedUrls[filename];
           
           return {
-            ...photo.toObject(),
-            url: cachedUrl || photo.url // Cache'de yoksa eski URL'yi kullan
+            _id: photo._id,
+            url: cachedUrl || photo.url, // Cache'de yoksa eski URL'yi kullan
+            isMain: photo.isMain
           };
         });
       }
