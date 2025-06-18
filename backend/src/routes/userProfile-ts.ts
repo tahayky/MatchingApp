@@ -108,10 +108,10 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
         const cachedUrls = await getMultiplePhotoUrls(photoFilenames);
         
         // Fotoğraf URL'lerini güncelle
-        userProfile.photos = userProfile.photos.map(photo => {
-          const urlParts = photo.url.split('/');
-          const filename = urlParts[urlParts.length - 1].split('?')[0];
-          const cachedUrl = cachedUrls[filename];
+        userProfile.photos = userProfile.photos.map((photo, index) => {
+          // Use the same filename that was extracted earlier
+          const extractedFilename = photoFilenames[index];
+          const cachedUrl = cachedUrls[extractedFilename];
           
           return {
             _id: photo._id,
@@ -948,13 +948,15 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
 
         if (photoFilenames.length > 0) {
           console.log(`[Discover] Getting cached URLs for ${photoFilenames.length} photos for user ${u._id}`);
+          console.log(`[Discover] Extracted filenames:`, photoFilenames);
           const cachedUrls = await getMultiplePhotoUrls(photoFilenames);
+          console.log(`[Discover] Cached URLs result:`, cachedUrls);
           
           // Update photo URLs with cached signed URLs
-          processedPhotos = u.photos.map(photo => {
-            const urlParts = photo.url.split('/');
-            const filename = urlParts[urlParts.length - 1].split('?')[0];
-            const cachedUrl = cachedUrls[filename];
+          processedPhotos = u.photos.map((photo, index) => {
+            // Use the same filename that was extracted earlier
+            const extractedFilename = photoFilenames[index];
+            const cachedUrl = cachedUrls[extractedFilename];
             
             return {
               _id: photo._id,
@@ -1026,6 +1028,58 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
 
 router.get('/test', (req: Request, res: Response) => {
   res.json({ message: 'Profiles test route is working!' });
+});
+
+// Debug endpoint to clear photo cache
+router.delete('/debug/clear-photo-cache', protect, async (req: AuthRequest, res: Response) => {
+  try {
+    const { createClient } = await import('redis');
+    const redisUrl = process.env.REDIS_URL;
+    
+    if (!redisUrl) {
+      return res.json({ success: false, message: 'Redis not configured' });
+    }
+
+    const redisClient = createClient({ url: redisUrl });
+    await redisClient.connect();
+    
+    // Photo cache'lerini temizle
+    const keys = await redisClient.keys('photo_url:*');
+    if (keys.length > 0) {
+      await redisClient.del(keys);
+      console.log(`[Debug] Cleared ${keys.length} photo cache entries`);
+    }
+    
+    await redisClient.disconnect();
+    
+    res.json({
+      success: true,
+      message: `Cleared ${keys.length} photo cache entries`,
+      clearedKeys: keys
+    });
+  } catch (error) {
+    console.error('[Debug] Error clearing cache:', error);
+    res.status(500).json({ success: false, error: 'Failed to clear cache' });
+  }
+});
+
+// Debug endpoint to cleanup expired photo URLs
+router.post('/debug/cleanup-expired-cache', protect, async (req: AuthRequest, res: Response) => {
+  try {
+    const { cleanupExpiredPhotoCache } = await import('../services/photoProcessor');
+    
+    const result = await cleanupExpiredPhotoCache();
+    
+    res.json({
+      success: true,
+      message: `Cleanup completed: ${result.cleaned} expired URLs removed out of ${result.total} total`,
+      cleaned: result.cleaned,
+      total: result.total
+    });
+  } catch (error) {
+    console.error('[Debug] Error during cleanup:', error);
+    res.status(500).json({ success: false, error: 'Failed to cleanup expired cache' });
+  }
 });
 
 export default router;

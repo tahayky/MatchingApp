@@ -313,6 +313,36 @@ export const uploadMultiplePhotos = async (
 };
 
 /**
+ * Check if Supabase signed URL is expired
+ */
+const isUrlExpired = (signedUrl: string): boolean => {
+  try {
+    const url = new URL(signedUrl);
+    const expParam = url.searchParams.get('exp');
+    
+    if (!expParam) {
+      console.log('[Photo Cache] No exp parameter found in URL, assuming expired');
+      return true; // Eğer exp parametresi yoksa expire kabul et
+    }
+    
+    const expTimestamp = parseInt(expParam, 10);
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    
+    // 30 saniye güvenlik payı ekle
+    const isExpired = (expTimestamp - 30) <= currentTimestamp;
+    
+    if (isExpired) {
+      console.log(`[Photo Cache] URL expired. Exp: ${expTimestamp}, Current: ${currentTimestamp}`);
+    }
+    
+    return isExpired;
+  } catch (error) {
+    console.error('[Photo Cache] Error checking URL expiration:', error);
+    return true; // Hata durumunda expire kabul et
+  }
+};
+
+/**
  * Get cached photo URL from Redis or create new 5-minute signed URL
  */
 export const getPhotoUrl = async (filename: string): Promise<string | null> => {
@@ -329,8 +359,14 @@ export const getPhotoUrl = async (filename: string): Promise<string | null> => {
       try {
         const cachedUrl = await redisClient.get(cacheKey);
         if (cachedUrl) {
-          console.log(`[Photo Cache] Cache HIT for ${filename}`);
-          return cachedUrl;
+          // Cache'den alınan URL'nin expire olup olmadığını kontrol et
+          if (isUrlExpired(cachedUrl)) {
+            console.log(`[Photo Cache] Cache HIT but URL EXPIRED for ${filename}, generating new URL`);
+            await redisClient.del(cacheKey); // Expire olmuş URL'yi cache'den temizle
+          } else {
+            console.log(`[Photo Cache] Cache HIT for ${filename}`);
+            return cachedUrl;
+          }
         }
         console.log(`[Photo Cache] Cache MISS for ${filename}`);
       } catch (redisError) {
@@ -429,5 +465,45 @@ export const clearUserPhotoCache = async (userId: string): Promise<void> => {
     }
   } catch (error) {
     console.error('[Photo Cache] Error clearing user cache:', error);
+  }
+};
+
+/**
+ * Clean up expired URLs from cache
+ */
+export const cleanupExpiredPhotoCache = async (): Promise<{ cleaned: number; total: number }> => {
+  await initializeRedis();
+  
+  if (!redisClient) {
+    return { cleaned: 0, total: 0 };
+  }
+
+  try {
+    const keys = await redisClient.keys('photo_url:*');
+    let cleanedCount = 0;
+    
+    console.log(`[Photo Cache Cleanup] Checking ${keys.length} cached URLs for expiration`);
+    
+    for (const key of keys) {
+      try {
+        const cachedUrl = await redisClient.get(key);
+        if (cachedUrl && isUrlExpired(cachedUrl)) {
+          await redisClient.del(key);
+          cleanedCount++;
+          console.log(`[Photo Cache Cleanup] Removed expired URL: ${key}`);
+        }
+      } catch (error) {
+        console.error(`[Photo Cache Cleanup] Error checking key ${key}:`, error);
+        // Delete problematic keys
+        await redisClient.del(key);
+        cleanedCount++;
+      }
+    }
+    
+    console.log(`[Photo Cache Cleanup] Cleaned ${cleanedCount} expired URLs out of ${keys.length} total`);
+    return { cleaned: cleanedCount, total: keys.length };
+  } catch (error) {
+    console.error('[Photo Cache Cleanup] Error during cleanup:', error);
+    return { cleaned: 0, total: 0 };
   }
 };
