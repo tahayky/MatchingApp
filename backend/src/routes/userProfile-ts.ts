@@ -839,8 +839,8 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
       gender: { $in: interestedInGenders },
       isProfileComplete: true
     };
-    // Apply distance filter
-    if (currentUser.location && currentUser.location.coordinates && (currentUser.location.coordinates[0] !== 0 || currentUser.location.coordinates[1] !== 0)) {
+    // Apply distance filter (temporarily disabled for debugging)
+    if (false && currentUser.location && currentUser.location.coordinates && (currentUser.location.coordinates[0] !== 0 || currentUser.location.coordinates[1] !== 0)) {
       // Use query parameter or fallback to database preference or default
       const distanceKm = maxDistance !== null ? maxDistance : (currentUser.preferences?.distance || 50);
       console.log(`[DISCOVER FILTERS] Using distance: ${distanceKm}km`);
@@ -851,6 +851,8 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
           $maxDistance: distanceKm * 1000
         }
       };
+    } else {
+      console.log(`[DISCOVER FILTERS] Distance filter disabled for testing`);
     }
     
     // Apply age range filter
