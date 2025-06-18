@@ -898,15 +898,12 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
         }
     });
 
-    // Debug viewed profiles - THIS IS THE MOST LIKELY CULPRIT!
+    // REMOVED: ViewedProfiles exclusion - this was unnecessary and confusing
+    // In a swipe app, users either like or reject - no need for "viewed but no action" tracking
+    // Rejection is already handled by the rejected list above
+    // Likes are already handled by the likedMatches above
     if (currentUser.viewedProfiles && currentUser.viewedProfiles.length > 0) {
-      console.log(`[EXCLUSION DEBUG] Found ${currentUser.viewedProfiles.length} viewed profiles to exclude`);
-      currentUser.viewedProfiles.forEach((profileId: mongoose.Types.ObjectId) => {
-        if (profileId && !usersToExclude.find(id => id.equals(profileId))) {
-          usersToExclude.push(profileId);
-          console.log(`[EXCLUSION DEBUG] Excluded (viewed profile): ${profileId}`);
-        }
-      });
+      console.log(`[INFO] User has ${currentUser.viewedProfiles.length} viewed profiles, but NOT excluding them (viewedProfiles system removed)`);
     }
 
     if (usersToExclude.length > 0) {
