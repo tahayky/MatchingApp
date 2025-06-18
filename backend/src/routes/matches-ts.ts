@@ -5,6 +5,7 @@ import User, { IUser, IPhoto, ILikeData, IRejectData } from '../models/User'; //
 import { protect } from '../middleware/auth';
 import { isAdmin } from '../middleware/admin';
 import { checkAndResetQuota } from './subscription';
+import { getMultiplePhotoUrls } from '../services/photoProcessor';
 
 // Extend Express Request interface
 interface AuthRequest extends Request {
@@ -484,22 +485,38 @@ router.get('/', protect, async (req: AuthRequest, res: Response) => {
       userMap.set(user._id.toString(), user);
     });
 
-    const populatedMatches = matches.map((match: IMatch) => {
+    // Process matches to get cached signed URLs for photos
+    const populatedMatches = await Promise.all(matches.map(async (match: IMatch) => {
       const targetUserData = userMap.get(match.targetUser.toString());
       const mainPhoto = targetUserData?.photos?.find((p: IPhoto) => p.isMain);
+
+      let photoUrl = null;
+      if (mainPhoto?.url) {
+        // Extract filename from URL
+        const urlParts = mainPhoto.url.split('/');
+        const filename = urlParts[urlParts.length - 1].split('?')[0]; // Remove query params
+        
+        if (filename && filename !== '') {
+          console.log(`[Matches] Getting cached URL for photo ${filename} for user ${targetUserData?._id}`);
+          const cachedUrls = await getMultiplePhotoUrls([filename]);
+          photoUrl = cachedUrls[filename] || mainPhoto.url; // Use cached URL if available, otherwise fallback
+        } else {
+          photoUrl = mainPhoto.url; // Fallback to original URL if filename extraction fails
+        }
+      }
 
       return {
         _id: match._id,
         targetUser: {
           _id: match.targetUser,
           name: targetUserData?.name || 'Unknown User',
-          photo: mainPhoto ? mainPhoto.url : null,
+          photo: photoUrl,
           lastActive: targetUserData?.lastActive
         },
         matchedAt: match.matchedAt,
         createdAt: match.createdAt // Include createdAt if needed by client
       };
-    });
+    }));
 
     res.json({
       success: true,

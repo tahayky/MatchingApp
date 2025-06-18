@@ -892,7 +892,8 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
     
     console.log(`[DISCOVER PROFILES] Found ${potentialMatches.length} potential matches from DB (page: ${page}, limit: ${queryLimit}, total: ${totalMatchingProfiles}).`);
 
-    const formattedUsers = potentialMatches.map(u => {
+    // Process photos to get cached signed URLs
+    const formattedUsers = await Promise.all(potentialMatches.map(async (u) => {
       let age;
       if (u.dateOfBirth) {
         const birthDate = new Date(u.dateOfBirth);
@@ -903,12 +904,50 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
           age--;
         }
       }
+
+      // Get cached signed URLs for photos
+      let processedPhotos = u.photos;
+      if (u.photos && u.photos.length > 0) {
+        const photoFilenames = u.photos
+          .map(photo => {
+            // Extract filename from URL
+            const urlParts = photo.url.split('/');
+            return urlParts[urlParts.length - 1].split('?')[0]; // Remove query params
+          })
+          .filter(filename => filename && filename !== '');
+
+        if (photoFilenames.length > 0) {
+          console.log(`[Discover] Getting cached URLs for ${photoFilenames.length} photos for user ${u._id}`);
+          const cachedUrls = await getMultiplePhotoUrls(photoFilenames);
+          
+          // Update photo URLs with cached signed URLs
+          processedPhotos = u.photos.map(photo => {
+            const urlParts = photo.url.split('/');
+            const filename = urlParts[urlParts.length - 1].split('?')[0];
+            const cachedUrl = cachedUrls[filename];
+            
+            return {
+              _id: photo._id,
+              url: cachedUrl || photo.url, // Use cached URL if available, otherwise fallback to original
+              isMain: photo.isMain
+            };
+          });
+        }
+      }
+
       return {
-        _id: u._id, name: u.name, gender: u.gender, age: age, photos: u.photos, bio: u.bio,
+        _id: u._id,
+        name: u.name,
+        gender: u.gender,
+        age: age,
+        photos: processedPhotos,
+        bio: u.bio,
         location: u.location ? { city: u.location.city, country: u.location.country } : undefined,
-        interests: u.interests, occupation: u.occupation, education: u.education,
+        interests: u.interests,
+        occupation: u.occupation,
+        education: u.education,
       };
-    });
+    }));
 
     // Add fetched profiles to currentUser's viewedProfiles
     const newViewedProfileIds = potentialMatches.map(p => p._id);
