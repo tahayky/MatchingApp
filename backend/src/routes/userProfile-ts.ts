@@ -875,26 +875,36 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
         console.log(`[EXCLUSION DEBUG] Excluded (liked): ${match.targetUser}`);
       });
     }
+    // Debug existing matches
     const existingMatches = await Match.find({
         $or: [
             { user: currentUser._id, targetUser: { $in: usersToExclude }, isMatch: true },
             { targetUser: currentUser._id, user: { $in: usersToExclude }, isMatch: true }
         ]
     }).select('user targetUser');
+    
+    if (existingMatches.length > 0) {
+      console.log(`[EXCLUSION DEBUG] Found ${existingMatches.length} existing matches`);
+    }
+    
     existingMatches.forEach(match => {
         if (match.user.toString() !== currentUser._id.toString() && !usersToExclude.find(id => id.equals(match.user))) {
             usersToExclude.push(match.user);
+            console.log(`[EXCLUSION DEBUG] Excluded (existing match user): ${match.user}`);
         }
         if (match.targetUser.toString() !== currentUser._id.toString() && !usersToExclude.find(id => id.equals(match.targetUser))) {
             usersToExclude.push(match.targetUser);
+            console.log(`[EXCLUSION DEBUG] Excluded (existing match target): ${match.targetUser}`);
         }
     });
 
-    // Add viewed profiles to the exclusion list
+    // Debug viewed profiles - THIS IS THE MOST LIKELY CULPRIT!
     if (currentUser.viewedProfiles && currentUser.viewedProfiles.length > 0) {
+      console.log(`[EXCLUSION DEBUG] Found ${currentUser.viewedProfiles.length} viewed profiles to exclude`);
       currentUser.viewedProfiles.forEach((profileId: mongoose.Types.ObjectId) => {
         if (profileId && !usersToExclude.find(id => id.equals(profileId))) {
           usersToExclude.push(profileId);
+          console.log(`[EXCLUSION DEBUG] Excluded (viewed profile): ${profileId}`);
         }
       });
     }
