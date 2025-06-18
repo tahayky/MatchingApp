@@ -17,6 +17,7 @@ import { ThemedView } from '@/components/ThemedView';
 import PhotoUploader from '@/components/PhotoUploader';
 import { profileService, authService } from '@/services';
 import { ProfileData } from '@/services/profileService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function EditProfileScreen() {
   const router = useRouter();
@@ -47,30 +48,60 @@ export default function EditProfileScreen() {
   const loadProfile = async () => {
     try {
       setLoading(true);
+      
+      // Load profile data
+      let profileData: any = {};
       try {
         const response = await profileService.getMyProfile();
         if (response.success && response.profile) {
           setProfile(response.profile);
           setPhotos(response.profile.photos || []);
-          // Populate form with existing data
-          setFormData({
-            bio: response.profile.bio || '',
-            coordinates: response.profile.location?.coordinates || [0, 0],
-            city: response.profile.location?.city || '',
-            country: response.profile.location?.country || '',
-            interests: response.profile.interests || [],
-            occupation: response.profile.occupation || '',
-            education: response.profile.education || '',
-            height: response.profile.height,
-            ageRangeMin: response.profile.preferences?.ageRange?.min || 18,
-            ageRangeMax: response.profile.preferences?.ageRange?.max || 100,
-            maxDistance: response.profile.preferences?.distance || 50
-          });
+          profileData = response.profile;
         }
       } catch (error) {
-        // Profile doesn't exist yet, that's ok
         console.log('Profile not found, creating new one');
       }
+
+      // Load user data (for gender and interestedIn)
+      let userData: any = {};
+      try {
+        const userResponse = await profileService.getUserInfo();
+        if (userResponse.success && userResponse.user) {
+          userData = userResponse.user;
+        }
+      } catch (error) {
+        console.log('User info not found');
+      }
+
+      // Load preferences from AsyncStorage
+      let savedPreferences: any = {};
+      try {
+        const prefsString = await AsyncStorage.getItem('userPreferences');
+        if (prefsString) {
+          savedPreferences = JSON.parse(prefsString);
+        }
+      } catch (error) {
+        console.log('No saved preferences found');
+      }
+
+      // Populate form with combined data
+      setFormData({
+        bio: profileData.bio || '',
+        coordinates: profileData.location?.coordinates || [0, 0],
+        city: profileData.location?.city || '',
+        country: profileData.location?.country || '',
+        interests: profileData.interests || [],
+        occupation: profileData.occupation || '',
+        education: profileData.education || '',
+        height: profileData.height,
+        // User data
+        gender: userData.gender || 'male',
+        interestedIn: userData.interestedIn || ['female'],
+        // Preferences from AsyncStorage or defaults
+        ageRangeMin: savedPreferences.ageRangeMin || 18,
+        ageRangeMax: savedPreferences.ageRangeMax || 100,
+        maxDistance: savedPreferences.maxDistance || 50
+      });
     } catch (error) {
       console.error('Error loading profile:', error);
     } finally {
@@ -82,35 +113,52 @@ export default function EditProfileScreen() {
     try {
       setSaving(true);
       
-      // Convert interests array to string for API
-      const apiData = {
-        ...formData,
-        interests: Array.isArray(formData.interests) 
-          ? formData.interests.join(',') 
-          : formData.interests
+      // 1. Save profile data to backend
+      const profileData = {
+        bio: formData.bio,
+        city: formData.city,
+        country: formData.country,
+        coordinates: formData.coordinates || [0, 0],
+        interests: Array.isArray(formData.interests)
+          ? formData.interests.join(',')
+          : formData.interests,
+        occupation: formData.occupation,
+        education: formData.education,
+        height: typeof formData.height === 'string' ? Number(formData.height) : formData.height
       };
       
-      // Ensure coordinates are properly formatted as an array of numbers
-      if (!apiData.coordinates || !Array.isArray(apiData.coordinates) || apiData.coordinates.length !== 2) {
-        apiData.coordinates = [0, 0]; // Default to [0,0] if invalid
+      console.log('Sending profile data:', JSON.stringify(profileData, null, 2));
+      const profileResponse = await profileService.createOrUpdateProfile(profileData);
+      
+      if (!profileResponse.success) {
+        throw new Error('Failed to save profile data');
       }
+
+      // 2. Save user data (gender, interestedIn) to backend
+      const userData = {
+        gender: formData.gender,
+        interestedIn: formData.interestedIn
+      };
       
-      // Make sure all numeric fields are actually numbers, not strings
-      if (typeof apiData.height === 'string') apiData.height = Number(apiData.height);
-      if (typeof apiData.ageRangeMin === 'string') apiData.ageRangeMin = Number(apiData.ageRangeMin);
-      if (typeof apiData.ageRangeMax === 'string') apiData.ageRangeMax = Number(apiData.ageRangeMax);
-      if (typeof apiData.maxDistance === 'string') apiData.maxDistance = Number(apiData.maxDistance);
+      console.log('Sending user data:', JSON.stringify(userData, null, 2));
+      const userResponse = await profileService.updateUserInfo(userData);
       
-      console.log('Sending profile data:', JSON.stringify(apiData, null, 2)); // Debug log
-      
-      const response = await profileService.createOrUpdateProfile(apiData);
-      
-      if (response.success) {
-        Alert.alert('Success', 'Profile saved successfully');
-        router.back();
-      } else {
-        Alert.alert('Error', 'Failed to save profile');
+      if (!userResponse.success) {
+        throw new Error('Failed to save user data');
       }
+
+      // 3. Save preferences to AsyncStorage
+      const preferences = {
+        ageRangeMin: typeof formData.ageRangeMin === 'string' ? Number(formData.ageRangeMin) : formData.ageRangeMin,
+        ageRangeMax: typeof formData.ageRangeMax === 'string' ? Number(formData.ageRangeMax) : formData.ageRangeMax,
+        maxDistance: typeof formData.maxDistance === 'string' ? Number(formData.maxDistance) : formData.maxDistance
+      };
+      
+      console.log('Saving preferences locally:', JSON.stringify(preferences, null, 2));
+      await AsyncStorage.setItem('userPreferences', JSON.stringify(preferences));
+
+      Alert.alert('Success', 'Profile saved successfully');
+      router.back();
     } catch (error: any) {
       console.error('Error saving profile:', error);
       

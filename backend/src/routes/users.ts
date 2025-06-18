@@ -16,6 +16,51 @@ interface UserUpdateFields {
   interestedIn?: string[];
 }
 
+// @route   GET /api/users/me
+// @desc    Get current user information
+// @access  Private
+router.get('/me', protect, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated'
+      });
+    }
+    
+    const user = await User.findById(req.user._id).select('-password');
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        gender: user.gender,
+        interestedIn: user.interestedIn,
+        dateOfBirth: user.dateOfBirth,
+        lastActive: user.lastActive,
+        isProfileComplete: user.isProfileComplete
+      }
+    });
+  } catch (error: unknown) {
+    console.error('Get current user error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: errorMessage
+    });
+  }
+});
+
 // @route   PUT /api/users/me
 // @desc    Update user information
 // @access  Private
