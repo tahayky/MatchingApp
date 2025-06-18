@@ -854,14 +854,26 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
     query.dateOfBirth = { $gte: minBirthDate, $lte: maxBirthDate };
 
     const usersToExclude: mongoose.Types.ObjectId[] = [];
+    
+    // Debug rejected users
     if (currentUser.rejected && currentUser.rejected.length > 0) {
+      console.log(`[EXCLUSION DEBUG] Adding ${currentUser.rejected.length} rejected users to exclude list`);
       currentUser.rejected.forEach((rejection: IRejectData) => {
-        if (rejection.user) { usersToExclude.push(rejection.user); }
+        if (rejection.user) {
+          usersToExclude.push(rejection.user);
+          console.log(`[EXCLUSION DEBUG] Excluded (rejected): ${rejection.user}`);
+        }
       });
     }
+    
+    // Debug liked matches
     const likedMatches = await Match.find({ user: currentUser._id, action: 'like' }).select('targetUser');
     if (likedMatches.length > 0) {
-      likedMatches.forEach(match => { usersToExclude.push(match.targetUser); });
+      console.log(`[EXCLUSION DEBUG] Adding ${likedMatches.length} liked matches to exclude list`);
+      likedMatches.forEach(match => {
+        usersToExclude.push(match.targetUser);
+        console.log(`[EXCLUSION DEBUG] Excluded (liked): ${match.targetUser}`);
+      });
     }
     const existingMatches = await Match.find({
         $or: [
