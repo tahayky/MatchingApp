@@ -149,7 +149,7 @@ const profileService = {
     }
   },
 
-  async uploadProfilePhoto(photoData: { data: string; mimeType: string; name: string; size?: number } | FormData): Promise<{ success: boolean; photo?: { url: string; isMain: boolean }, photos?: any[], message?: string }> {
+  async uploadProfilePhotoFormData(formData: FormData): Promise<{ success: boolean; photo?: { url: string; isMain: boolean }, photos?: any[], message?: string }> {
     if (!(await isAuthenticated())) {
       return { success: false, message: 'Not authenticated' };
     }
@@ -160,12 +160,108 @@ const profileService = {
         throw new Error('No internet connection');
       }
       
-      console.log('📤 Photo data gönderiliyor...', typeof photoData);
-      const response = await apiClient.post('/users/profile/photos', photoData);
-      return response.data;
+      // Get token for auth
+      const token = await AsyncStorage.getItem('authToken');
+      const url = `${apiClient.defaults.baseURL}/users/profile/photos`;
+      
+      console.log('📤 Using FormData + fetch for photo upload...');
+      console.log('🌐 Upload URL:', url);
+      console.log('🔑 Token length:', token?.length || 0);
+      
+      // Test server connectivity first
+      console.log('🔍 Testing server connectivity...');
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const testResponse = await fetch(`${apiClient.defaults.baseURL}/users/profile/me`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        console.log('✅ Server test response status:', testResponse.status);
+      } catch (testError) {
+        console.log('❌ Server connectivity test failed:', testError);
+        throw new Error('Server unreachable');
+      }
+      
+      // Use native fetch with FormData (no Content-Type header)
+      console.log('📤 Starting FormData upload...');
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          // NO Content-Type - let fetch set multipart boundary
+        },
+        body: formData,
+      });
+      
+      console.log('📥 Upload response status:', response.status);
+      console.log('📥 Upload response headers:', response.headers);
+      
+      const result = await response.json();
+      console.log('📥 Upload response body:', result);
+      
+      if (!response.ok) {
+        throw new Error(result.message || 'Upload failed');
+      }
+      
+      return result;
+    } catch (error: any) {
+      console.error('❌ Error uploading photo with FormData:', error);
+      console.error('❌ Error name:', error.name);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Error stack:', error.stack);
+      const errorMessage = error.message || 'Error uploading photo';
+      return { success: false, message: errorMessage };
+    }
+  },
+
+  // Legacy method for backward compatibility
+  async uploadProfilePhoto(photoData: { data: string; mimeType: string; name: string; size?: number } | FormData): Promise<{ success: boolean; photo?: { url: string; isMain: boolean }, photos?: any[], message?: string }> {
+    // If it's FormData, use the new method
+    if (photoData instanceof FormData) {
+      return this.uploadProfilePhotoFormData(photoData);
+    }
+    
+    // Otherwise use base64 method (fallback)
+    if (!(await isAuthenticated())) {
+      return { success: false, message: 'Not authenticated' };
+    }
+
+    try {
+      const isConnected = await checkInternetConnection();
+      if (!isConnected) {
+        throw new Error('No internet connection');
+      }
+      
+      // Get token for auth
+      const token = await AsyncStorage.getItem('authToken');
+      
+      console.log('📤 Using base64 for photo upload...');
+      console.log('📊 Photo data size:', JSON.stringify(photoData).length, 'chars');
+      
+      const response = await fetch(`${apiClient.defaults.baseURL}/users/profile/photos`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(photoData),
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.message || 'Upload failed');
+      }
+      
+      return result;
     } catch (error: any) {
       console.error('Error uploading photo:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Error uploading photo';
+      const errorMessage = error.message || 'Error uploading photo';
       return { success: false, message: errorMessage };
     }
   },

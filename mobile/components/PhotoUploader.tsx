@@ -12,6 +12,7 @@ import {
 import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system';
 import { profileService } from '@/services';
 
@@ -63,8 +64,13 @@ export default function PhotoUploader({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.01, // Ultra extreme low quality
         allowsMultipleSelection: false,
+        exif: false,
+        // Çok küçük boyuta resize et
+        base64: false,
+        // Maksimum boyut sınırı
+        videoMaxDuration: 0,
       });
 
       if (!result.canceled && result.assets[0]) {
@@ -97,7 +103,9 @@ export default function PhotoUploader({
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.01, // Ultra extreme low quality
+        exif: false,
+        base64: false,
       });
 
       if (!result.canceled && result.assets[0]) {
@@ -113,32 +121,41 @@ export default function PhotoUploader({
     try {
       setUploading(true);
 
-      // Asset'ten mime type'ı al, yoksa default kullan
-      const mimeType = asset.mimeType || 'image/jpeg';
+      console.log('📸 Original photo size:', asset.fileSize);
+      console.log('📐 Original dimensions:', asset.width, 'x', asset.height);
       
-      // File extension'ı mime type'dan çıkar
-      let extension = 'jpg';
-      if (mimeType.includes('png')) extension = 'png';
-      else if (mimeType.includes('webp')) extension = 'webp';
-      
-      console.log('📸 Reading photo as base64...');
-      
-      // Dosyayı base64 string olarak oku
-      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      
-      console.log('✅ Base64 read successfully, size:', base64.length);
-      
-      // JSON payload oluştur
-      const photoData = {
-        data: base64,
-        mimeType: mimeType,
-        name: `photo_${Date.now()}.${extension}`,
-        size: asset.fileSize
-      };
+      // Optimize boyut - kalite dengeyi yakalayalım
+      console.log('🔄 Resizing to optimized size...');
+      const manipulatedImage = await ImageManipulator.manipulateAsync(
+        asset.uri,
+        [
+          { resize: { width: 400, height: 400 } }, // Daha iyi kalite için biraz büyük
+        ],
+        {
+          compress: 0.3, // Daha iyi kalite
+          format: ImageManipulator.SaveFormat.JPEG,
+          base64: false,
+        }
+      );
 
-      const response = await profileService.uploadProfilePhoto(photoData);
+      console.log('✅ Resized successfully');
+      console.log('📐 New dimensions: 400x400');
+      
+      // File info al
+      const fileInfo = await FileSystem.getInfoAsync(manipulatedImage.uri);
+      console.log('📏 New file size:', fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 'unknown');
+      
+      // FormData oluştur
+      const formData = new FormData();
+      formData.append('photo', {
+        uri: manipulatedImage.uri,
+        type: 'image/jpeg',
+        name: `photo_${Date.now()}.jpg`
+      } as any);
+      
+      console.log('✅ FormData created with resized image');
+
+      const response = await profileService.uploadProfilePhoto(formData);
 
       if (response.success && response.photo) {
         const newPhotos = [...photos, response.photo];

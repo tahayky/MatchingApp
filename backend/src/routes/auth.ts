@@ -70,15 +70,22 @@ router.post('/register-without-password', async (req: Request, res: Response) =>
       });
     }
 
-    // Find the default subscription plan
-    const defaultPlan = await SubscriptionPlan.findOne({ isDefault: true, isActive: true });
+    // Find the default subscription plan or create one
+    let defaultPlan = await SubscriptionPlan.findOne({ isDefault: true, isActive: true });
 
     if (!defaultPlan) {
-      console.error('CRITICAL: No default subscription plan found or active.');
-      return res.status(500).json({
-        success: false,
-        message: 'Server configuration error. Please contact support.'
+      console.log('No default plan found, creating one...');
+      defaultPlan = await SubscriptionPlan.create({
+        planId: 'FREE',
+        name: 'Free',
+        dailyLikeQuota: 3,
+        description: 'Basic free plan',
+        features: ['3 daily likes', 'Basic matching'],
+        isActive: true,
+        isDefault: true,
+        order: 1
       });
+      console.log('Default plan created:', defaultPlan.planId);
     }
 
     // Create user without password
@@ -140,17 +147,22 @@ router.post('/register', async (req: Request, res: Response) => {
       });
     }
 
-    // Find the default subscription plan
-    const defaultPlan = await SubscriptionPlan.findOne({ isDefault: true, isActive: true });
+    // Find the default subscription plan or create one
+    let defaultPlan = await SubscriptionPlan.findOne({ isDefault: true, isActive: true });
 
     if (!defaultPlan) {
-      // This case should ideally be handled by ensuring a default plan always exists.
-      // For now, log an error and prevent registration or fall back to a hardcoded basic plan.
-      console.error('CRITICAL: No default subscription plan found or active. User registration cannot proceed with dynamic default tier.');
-      return res.status(500).json({
-        success: false,
-        message: 'Server configuration error: No default subscription plan set.'
+      console.log('No default plan found, creating one...');
+      defaultPlan = await SubscriptionPlan.create({
+        planId: 'FREE',
+        name: 'Free',
+        dailyLikeQuota: 3,
+        description: 'Basic free plan',
+        features: ['3 daily likes', 'Basic matching'],
+        isActive: true,
+        isDefault: true,
+        order: 1
       });
+      console.log('Default plan created:', defaultPlan.planId);
     }
 
     // Create new user
