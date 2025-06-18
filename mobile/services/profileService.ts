@@ -355,14 +355,38 @@ const profileService = {
         };
       }
 
-      // Limit parametresi opsiyonel, backend kendi ayarını kullansın
-      const url = limit ? `/users/profile/discover?page=${page}&limit=${limit}` : `/users/profile/discover?page=${page}`;
+      // Load preferences from AsyncStorage and add as query parameters
+      let filterParams = '';
+      try {
+        const prefsString = await AsyncStorage.getItem('userPreferences');
+        if (prefsString) {
+          const preferences = JSON.parse(prefsString);
+          const params = new URLSearchParams();
+          
+          if (preferences.ageRangeMin) params.append('ageRangeMin', preferences.ageRangeMin.toString());
+          if (preferences.ageRangeMax) params.append('ageRangeMax', preferences.ageRangeMax.toString());
+          if (preferences.maxDistance) params.append('maxDistance', preferences.maxDistance.toString());
+          
+          if (params.toString()) {
+            filterParams = '&' + params.toString();
+            console.log(`[Discover] Adding filter parameters: ${filterParams}`);
+          }
+        }
+      } catch (error) {
+        console.log('[Discover] Error loading preferences from AsyncStorage:', error);
+      }
+
+      // Build URL with filters
+      let url = `/users/profile/discover?page=${page}`;
+      if (limit) url += `&limit=${limit}`;
+      url += filterParams;
+      
       console.log(`Fetching profiles from API... URL: ${url}`);
       const response = await apiClient.get<DiscoverProfilesResponse>(url);
       
       // Example: only cache first page for simplicity with pagination
-      if (response.data.success && response.data.profiles.length > 0 && page === 1) { 
-        await profileCache.save(response.data.profiles); 
+      if (response.data.success && response.data.profiles.length > 0 && page === 1) {
+        await profileCache.save(response.data.profiles);
         await profileCache.updateLastFetch();
         console.log(`Saved ${response.data.profiles.length} profiles (first page) to cache`);
       }

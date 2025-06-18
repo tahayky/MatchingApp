@@ -812,7 +812,13 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
     const page = parseInt(req.query.page as string) || 1;
     const queryLimit = currentProfilesPerPage;
 
+    // Get filter parameters from query (override database preferences)
+    const ageRangeMin = parseInt(req.query.ageRangeMin as string) || null;
+    const ageRangeMax = parseInt(req.query.ageRangeMax as string) || null;
+    const maxDistance = parseInt(req.query.maxDistance as string) || null;
+
     console.log(`[${new Date().toISOString()}] [DISCOVER HANDLER] Processing. UserID: ${authReq.user?._id}. Page: ${page}, Limit: ${queryLimit}`);
+    console.log(`[DISCOVER FILTERS] From query: ageRange: ${ageRangeMin}-${ageRangeMax}, distance: ${maxDistance}`);
 
     if (!authReq.user || !authReq.user._id) {
       return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
@@ -833,23 +839,30 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
       gender: { $in: interestedInGenders },
       isProfileComplete: true
     };
+    // Apply distance filter
     if (currentUser.location && currentUser.location.coordinates && (currentUser.location.coordinates[0] !== 0 || currentUser.location.coordinates[1] !== 0)) {
-      const maxDistance = currentUser.preferences?.distance || 50;
+      // Use query parameter or fallback to database preference or default
+      const distanceKm = maxDistance !== null ? maxDistance : (currentUser.preferences?.distance || 50);
+      console.log(`[DISCOVER FILTERS] Using distance: ${distanceKm}km`);
+      
       query.location = {
         $near: {
           $geometry: { type: 'Point', coordinates: currentUser.location.coordinates },
-          $maxDistance: maxDistance * 1000
+          $maxDistance: distanceKm * 1000
         }
       };
     }
-    if (currentUser.preferences?.ageRange) {
-        const minAge = currentUser.preferences.ageRange.min;
-        const maxAge = currentUser.preferences.ageRange.max;
-        const today = new Date();
-        const minBirthDate = new Date(today.getFullYear() - maxAge -1, today.getMonth(), today.getDate());
-        const maxBirthDate = new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate());
-        query.dateOfBirth = { $gte: minBirthDate, $lte: maxBirthDate };
-    }
+    
+    // Apply age range filter
+    const finalMinAge = ageRangeMin !== null ? ageRangeMin : (currentUser.preferences?.ageRange?.min || 18);
+    const finalMaxAge = ageRangeMax !== null ? ageRangeMax : (currentUser.preferences?.ageRange?.max || 100);
+    
+    console.log(`[DISCOVER FILTERS] Using age range: ${finalMinAge}-${finalMaxAge}`);
+    
+    const today = new Date();
+    const minBirthDate = new Date(today.getFullYear() - finalMaxAge - 1, today.getMonth(), today.getDate());
+    const maxBirthDate = new Date(today.getFullYear() - finalMinAge, today.getMonth(), today.getDate());
+    query.dateOfBirth = { $gte: minBirthDate, $lte: maxBirthDate };
 
     const usersToExclude: mongoose.Types.ObjectId[] = [];
     if (currentUser.rejected && currentUser.rejected.length > 0) {
