@@ -492,9 +492,24 @@ router.get('/', protect, async (req: AuthRequest, res: Response) => {
 
       let photoUrl = null;
       if (mainPhoto?.url) {
-        // Extract filename from URL
-        const urlParts = mainPhoto.url.split('/');
-        const filename = urlParts[urlParts.length - 1].split('?')[0]; // Remove query params
+        // Extract filename from Supabase signed URL
+        // Format: https://project.supabase.co/storage/v1/object/sign/user-photos/userid/filename.jpg?token=xyz
+        const url = mainPhoto.url;
+        const bucketPath = '/storage/v1/object/sign/user-photos/';
+        const bucketIndex = url.indexOf(bucketPath);
+        
+        let filename;
+        if (bucketIndex !== -1) {
+          const pathStart = bucketIndex + bucketPath.length;
+          const queryIndex = url.indexOf('?', pathStart);
+          filename = queryIndex !== -1
+            ? url.substring(pathStart, queryIndex)
+            : url.substring(pathStart);
+        } else {
+          // Fallback: try to extract from end of URL
+          const urlParts = url.split('/');
+          filename = urlParts[urlParts.length - 1].split('?')[0];
+        }
         
         if (filename && filename !== '') {
           console.log(`[Matches] Getting cached URL for photo ${filename} for user ${targetUserData?._id}`);

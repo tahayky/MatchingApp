@@ -82,9 +82,24 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
     if (userProfile.photos && userProfile.photos.length > 0) {
       const photoFilenames = userProfile.photos
         .map(photo => {
-          // URL'den filename çıkar (sadece dosya yolunu al)
-          const urlParts = photo.url.split('/');
-          return urlParts[urlParts.length - 1].split('?')[0]; // Query params'i temizle
+          // Extract filename from Supabase signed URL
+          // Format: https://project.supabase.co/storage/v1/object/sign/user-photos/userid/filename.jpg?token=xyz
+          const url = photo.url;
+          const bucketPath = '/storage/v1/object/sign/user-photos/';
+          const bucketIndex = url.indexOf(bucketPath);
+          
+          if (bucketIndex !== -1) {
+            const pathStart = bucketIndex + bucketPath.length;
+            const queryIndex = url.indexOf('?', pathStart);
+            const filename = queryIndex !== -1
+              ? url.substring(pathStart, queryIndex)
+              : url.substring(pathStart);
+            return filename;
+          }
+          
+          // Fallback: try to extract from end of URL
+          const urlParts = url.split('/');
+          return urlParts[urlParts.length - 1].split('?')[0];
         })
         .filter(filename => filename && filename !== '');
 
@@ -910,9 +925,24 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
       if (u.photos && u.photos.length > 0) {
         const photoFilenames = u.photos
           .map(photo => {
-            // Extract filename from URL
-            const urlParts = photo.url.split('/');
-            return urlParts[urlParts.length - 1].split('?')[0]; // Remove query params
+            // Extract filename from Supabase signed URL
+            // Format: https://project.supabase.co/storage/v1/object/sign/user-photos/userid/filename.jpg?token=xyz
+            const url = photo.url;
+            const bucketPath = '/storage/v1/object/sign/user-photos/';
+            const bucketIndex = url.indexOf(bucketPath);
+            
+            if (bucketIndex !== -1) {
+              const pathStart = bucketIndex + bucketPath.length;
+              const queryIndex = url.indexOf('?', pathStart);
+              const filename = queryIndex !== -1
+                ? url.substring(pathStart, queryIndex)
+                : url.substring(pathStart);
+              return filename;
+            }
+            
+            // Fallback: try to extract from end of URL
+            const urlParts = url.split('/');
+            return urlParts[urlParts.length - 1].split('?')[0];
           })
           .filter(filename => filename && filename !== '');
 
