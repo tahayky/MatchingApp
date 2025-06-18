@@ -12,6 +12,7 @@ import {
 import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { profileService } from '@/services';
 
 const { width } = Dimensions.get('window');
@@ -112,8 +113,6 @@ export default function PhotoUploader({
     try {
       setUploading(true);
 
-      const formData = new FormData();
-      
       // Asset'ten mime type'ı al, yoksa default kullan
       const mimeType = asset.mimeType || 'image/jpeg';
       
@@ -122,20 +121,24 @@ export default function PhotoUploader({
       if (mimeType.includes('png')) extension = 'png';
       else if (mimeType.includes('webp')) extension = 'webp';
       
-      formData.append('photo', {
-        uri: asset.uri,
-        type: mimeType,
-        name: `photo.${extension}`,
-      } as any);
+      console.log('📸 Reading photo as base64...');
       
-      console.log('Uploading photo:', {
-        uri: asset.uri,
-        type: mimeType,
-        name: `photo.${extension}`,
-        size: asset.fileSize
+      // Dosyayı base64 string olarak oku
+      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+        encoding: FileSystem.EncodingType.Base64,
       });
+      
+      console.log('✅ Base64 read successfully, size:', base64.length);
+      
+      // JSON payload oluştur
+      const photoData = {
+        data: base64,
+        mimeType: mimeType,
+        name: `photo_${Date.now()}.${extension}`,
+        size: asset.fileSize
+      };
 
-      const response = await profileService.uploadProfilePhoto(formData);
+      const response = await profileService.uploadProfilePhoto(photoData);
 
       if (response.success && response.photo) {
         const newPhotos = [...photos, response.photo];

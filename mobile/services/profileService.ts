@@ -149,7 +149,7 @@ const profileService = {
     }
   },
 
-  async uploadProfilePhoto(photoFile: FormData): Promise<{ success: boolean; photo?: { url: string; isMain: boolean }, photos?: any[], message?: string }> {
+  async uploadProfilePhoto(photoData: { data: string; mimeType: string; name: string; size?: number } | FormData): Promise<{ success: boolean; photo?: { url: string; isMain: boolean }, photos?: any[], message?: string }> {
     if (!(await isAuthenticated())) {
       return { success: false, message: 'Not authenticated' };
     }
@@ -159,7 +159,9 @@ const profileService = {
       if (!isConnected) {
         throw new Error('No internet connection');
       }
-      const response = await apiClient.post('/users/profile/photos', photoFile);
+      
+      console.log('📤 Photo data gönderiliyor...', typeof photoData);
+      const response = await apiClient.post('/users/profile/photos', photoData);
       return response.data;
     } catch (error: any) {
       console.error('Error uploading photo:', error);

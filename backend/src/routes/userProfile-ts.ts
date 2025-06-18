@@ -115,22 +115,16 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Upload single photo with Supabase Storage
+// Upload single photo with Supabase Storage - supports both FormData and Base64
 router.post('/photos', protect, photoUploadConfig.single('photo'), async (req: AuthRequest, res: Response) => {
   try {
-    console.log('[Photo Upload] Headers:', req.headers);
     console.log('[Photo Upload] Content-Type:', req.headers['content-type']);
+    console.log('[Photo Upload] Body type:', typeof req.body);
+    console.log('[Photo Upload] Has file:', !!req.file);
     console.log('[Photo Upload] Body keys:', Object.keys(req.body));
-    console.log('[Photo Upload] File object:', req.file);
-    console.log('[Photo Upload] Raw body type:', typeof req.body);
     
     if (!req.user || !req.user._id) {
       return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
-    }
-    if (!req.file) {
-      console.log('[Photo Upload] ERROR: No file uploaded - req.file is null/undefined');
-      console.log('[Photo Upload] Available request properties:', Object.keys(req));
-      return res.status(400).json({ success: false, message: 'No file uploaded - check FormData format' });
     }
 
     const user = await User.findById(req.user._id);
@@ -138,8 +132,34 @@ router.post('/photos', protect, photoUploadConfig.single('photo'), async (req: A
       return res.status(404).json({ success: false, message: 'User not found. Please complete your profile first.' });
     }
 
-    // Upload photo to Supabase
-    const uploadResult: PhotoUploadResult = await uploadPhoto(req.file, req.user._id.toString());
+    let uploadResult: PhotoUploadResult;
+
+    // Check if it's base64 data (JSON) or FormData
+    if (req.body.data && req.body.mimeType && req.body.name) {
+      console.log('[Photo Upload] Processing base64 data...');
+      
+      // Convert base64 to buffer
+      const base64Data = req.body.data;
+      const buffer = Buffer.from(base64Data, 'base64');
+      
+      // Create fake multer file object
+      const fakeFile = {
+        buffer: buffer,
+        originalname: req.body.name,
+        mimetype: req.body.mimeType,
+        size: buffer.length
+      } as Express.Multer.File;
+      
+      uploadResult = await uploadPhoto(fakeFile, req.user._id.toString());
+    } else if (req.file) {
+      console.log('[Photo Upload] Processing FormData file...');
+      uploadResult = await uploadPhoto(req.file, req.user._id.toString());
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'No photo data provided. Send either FormData with file or JSON with base64 data.'
+      });
+    }
     
     if (!uploadResult.success) {
       return res.status(400).json({

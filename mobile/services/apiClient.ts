@@ -53,7 +53,10 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use((config) => {
   // Eğer data FormData ise Content-Type'ı kaldır, axios otomatik eklesin
   if (config.data instanceof FormData) {
+    console.log('🔧 FormData detected, removing Content-Type header');
     delete config.headers['Content-Type'];
+  } else {
+    console.log('📄 Data type:', typeof config.data, config.data?.constructor?.name);
   }
   return config;
 });
