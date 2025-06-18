@@ -125,7 +125,7 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
     res.json({ success: true, user: userProfile });
   } catch (error: unknown) {
     console.error('Get my profile error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred. 😖';
     res.status(500).json({ success: false, message: 'Server error fetching profile', error: errorMessage });
   }
 });
