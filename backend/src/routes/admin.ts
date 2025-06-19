@@ -192,18 +192,19 @@ router.get('/users', isAdminAuthenticated, async (req: Request, res: Response) =
 
     // Manually add some profile information if needed for the admin list
     // Directly use fields from the User model as profile info is merged
-    const finalUserData = usersFromDB.map(user => {
+    const finalUserData = await Promise.all(usersFromDB.map(async user => {
       const mainPhoto = user.photos?.find((p: IPhoto) => p.isMain);
+      const mainPhotoUrl = mainPhoto?.filename ? await getPhotoUrl(mainPhoto.filename) :
+                     (user.photos?.[0]?.filename ? await getPhotoUrl(user.photos[0].filename) : null);
       return {
         ...user,
         // profileData is no longer a separate object, access fields directly from user
-        mainPhotoUrl: mainPhoto?.filename ? await getPhotoUrl(mainPhoto.filename) :
-                     (user.photos?.[0]?.filename ? await getPhotoUrl(user.photos[0].filename) : null),
+        mainPhotoUrl,
         bioExcerpt: user.bio?.substring(0, 50) + (user.bio && user.bio.length > 50 ? '...' : ''),
         // lastActive is already on the user model, prioritize it. Fallback to updatedAt.
         lastActive: user.lastActive || user.updatedAt,
       };
-    });
+    }));
 
     res.json({
       success: true,

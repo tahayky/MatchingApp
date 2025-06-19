@@ -161,26 +161,7 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
     // Fotoğraf URL'lerini dinamik olarak cache'den al
     if (userProfile.photos && userProfile.photos.length > 0) {
       const photoFilenames = userProfile.photos
-        .map(photo => {
-          // Extract filename from Supabase signed URL
-          // Format: https://project.supabase.co/storage/v1/object/sign/user-photos/userid/filename.jpg?token=xyz
-          const url = photo.url;
-          const bucketPath = '/storage/v1/object/sign/user-photos/';
-          const bucketIndex = url.indexOf(bucketPath);
-          
-          if (bucketIndex !== -1) {
-            const pathStart = bucketIndex + bucketPath.length;
-            const queryIndex = url.indexOf('?', pathStart);
-            const filename = queryIndex !== -1
-              ? url.substring(pathStart, queryIndex)
-              : url.substring(pathStart);
-            return filename;
-          }
-          
-          // Fallback: try to extract from end of URL
-          const urlParts = url.split('/');
-          return urlParts[urlParts.length - 1].split('?')[0];
-        })
+        .map(photo => photo.filename)
         .filter(filename => filename && filename !== '');
 
       if (photoFilenames.length > 0) {
@@ -195,8 +176,11 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
           
           return {
             _id: photo._id,
-            url: cachedUrl || photo.url, // Cache'de yoksa eski URL'yi kullan
-            isMain: photo.isMain
+            filename: photo.filename,
+            url: cachedUrl || '', // Cache'de yoksa boş string
+            isMain: photo.isMain,
+            selfViewUrl: photo.selfViewUrl,
+            selfViewUrlExpiration: photo.selfViewUrlExpiration
           };
         });
       }
@@ -386,9 +370,8 @@ router.delete('/photos/:photoId', protect, async (req: AuthRequest, res: Respons
     const photoToDelete = user.photos[photoIndex];
     const wasMain = photoToDelete.isMain;
 
-    // Extract filename from URL for Supabase deletion
-    const urlParts = photoToDelete.url.split('/');
-    const filename = urlParts[urlParts.length - 1];
+    // Use filename directly from database
+    const filename = photoToDelete.filename;
     const userFolder = req.user._id.toString();
     const fullPath = `${userFolder}/${filename}`;
 
@@ -1041,6 +1024,7 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
             
             return {
               _id: photo._id,
+              filename: photo.filename,
               url: cachedUrl || '', // Use cached URL if available, empty string as fallback
               isMain: photo.isMain
             };

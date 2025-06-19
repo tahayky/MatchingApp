@@ -565,9 +565,11 @@ router.get('/likes', protect, async (req: AuthRequest, res: Response) => {
     }
 
     // Format the response
-    const likesResponse = currentUser.likedBy
-      .filter(likeEntry => likeEntry.user) // Ensure the user who liked is populated
-      .map((likeEntry) => {
+    const likesWithUsers = currentUser.likedBy
+      .filter(likeEntry => likeEntry.user); // Ensure the user who liked is populated
+
+    const likesResponse = await Promise.all(
+      likesWithUsers.map(async (likeEntry) => {
         const liker = likeEntry.user as IUser; // The user who performed the like
         const mainPhoto = liker.photos?.find((p: IPhoto) => p.isMain);
 
@@ -582,15 +584,18 @@ router.get('/likes', protect, async (req: AuthRequest, res: Response) => {
             }
         }
 
+        const photoUrl = mainPhoto?.filename ? await getPhotoUrl(mainPhoto.filename) : null;
+
         return {
           _id: liker._id, // ID of the user who liked
           name: liker.name,
           age: age,
           gender: liker.gender,
-          photo: mainPhoto?.filename ? await getPhotoUrl(mainPhoto.filename) : null,
+          photo: photoUrl,
           likedAt: likeEntry.likedAt // Timestamp when the like occurred
         };
-      });
+      })
+    );
 
     // Sort by most recent likes
     const sortedLikes = likesResponse.sort((a, b) => {
