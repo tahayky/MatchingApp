@@ -21,7 +21,7 @@ const photoSize = (width - 60) / 3; // 3 photos per row with margins
 
 interface Photo {
   _id?: string;
-  url: string;
+  filename: string; // Storage filename (e.g., "user123/photo1.jpg")
   selfViewUrl?: string; // Self-view URL for user's own photos
   selfViewUrlExpiration?: string; // ISO date string
   isMain: boolean;
@@ -271,12 +271,13 @@ export default function PhotoUploader({
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
         <View style={styles.photosContainer}>
           {photos.map((photo, index) => {
-            // Use self-view URL if available and not expired, otherwise fallback to regular URL
+            // Use self-view URL if available and not expired, otherwise show placeholder
+            // For now, prioritize self-view URL since this is for user's own photos
             const imageUrl = photo.selfViewUrl &&
               photo.selfViewUrlExpiration &&
               new Date(photo.selfViewUrlExpiration) > new Date()
                 ? photo.selfViewUrl
-                : photo.url;
+                : ''; // Empty string as fallback for now
             
             return (
               <TouchableOpacity
@@ -285,7 +286,13 @@ export default function PhotoUploader({
                 onPress={() => showPhotoMenu(photo)}
                 disabled={loadingPhotoId === photo._id}
               >
-                <Image source={{ uri: imageUrl }} style={styles.photo} />
+                {imageUrl ? (
+                  <Image source={{ uri: imageUrl }} style={styles.photo} />
+                ) : (
+                  <View style={[styles.photo, styles.photoPlaceholder]}>
+                    <ThemedText style={styles.placeholderText}>Loading...</ThemedText>
+                  </View>
+                )}
               {photo.isMain && (
                 <View style={styles.mainBadge}>
                   <ThemedText style={styles.mainBadgeText}>MAIN</ThemedText>
@@ -439,5 +446,15 @@ const styles = StyleSheet.create({
   emptyButtonText: {
     color: 'white',
     fontWeight: 'bold',
+  },
+  photoPlaceholder: {
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  placeholderText: {
+    color: '#888',
+    fontSize: 12,
+    textAlign: 'center',
   },
 });

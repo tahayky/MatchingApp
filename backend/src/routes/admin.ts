@@ -8,6 +8,7 @@ import AppSetting, { IAppSetting } from '../models/AppSetting'; // Import AppSet
 import Match from '../models/Match'; // Import Match model
 import { isAdminAuthenticated } from '../middleware/adminAuth'; // Import the new middleware
 import { updateDiscoverLimiter, updateProfilesPerPageSetting } from '../routes/userProfile-ts'; // Import updaters
+import { getPhotoUrl } from '../services/photoProcessor'; // Import photo URL generator
 
 // Load environment variables
 dotenv.config();
@@ -196,7 +197,8 @@ router.get('/users', isAdminAuthenticated, async (req: Request, res: Response) =
       return {
         ...user,
         // profileData is no longer a separate object, access fields directly from user
-        mainPhotoUrl: mainPhoto?.url || user.photos?.[0]?.url,
+        mainPhotoUrl: mainPhoto?.filename ? await getPhotoUrl(mainPhoto.filename) :
+                     (user.photos?.[0]?.filename ? await getPhotoUrl(user.photos[0].filename) : null),
         bioExcerpt: user.bio?.substring(0, 50) + (user.bio && user.bio.length > 50 ? '...' : ''),
         // lastActive is already on the user model, prioritize it. Fallback to updatedAt.
         lastActive: user.lastActive || user.updatedAt,

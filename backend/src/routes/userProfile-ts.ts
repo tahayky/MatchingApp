@@ -46,11 +46,11 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
 
     // Process photos to include self-view URLs
     const processedPhotos = await Promise.all(user.photos.map(async (photo) => {
-      // Extract filename from the original URL
-      const filename = extractFilenameFromUrl(photo.url);
+      // Use filename directly (no more URL parsing needed!)
+      const filename = photo.filename;
       if (!filename) {
-        console.error('Could not extract filename from URL:', photo.url);
-        return photo; // Return original photo if filename extraction fails
+        console.error('Photo missing filename:', photo);
+        return photo; // Return original photo if filename is missing
       }
 
       // Get or generate self-view URL
@@ -107,31 +107,7 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Helper function to extract filename from URL
-const extractFilenameFromUrl = (url: string): string | null => {
-  try {
-    const urlObj = new URL(url);
-    const bucketPath = '/storage/v1/object/sign/user-photos/';
-    const bucketIndex = url.indexOf(bucketPath);
-    
-    if (bucketIndex !== -1) {
-      const pathStart = bucketIndex + bucketPath.length;
-      const queryIndex = url.indexOf('?', pathStart);
-      const filename = queryIndex !== -1
-        ? url.substring(pathStart, queryIndex)
-        : url.substring(pathStart);
-      return filename;
-    }
-    
-    // Fallback: try to extract from end of URL
-    const pathname = urlObj.pathname;
-    const segments = pathname.split('/');
-    return segments[segments.length - 1] || null;
-  } catch (error) {
-    console.error('Error extracting filename from URL:', error);
-    return null;
-  }
-};
+// extractFilenameFromUrl function removed - no longer needed since we store filenames directly
 
 router.post('/', protect, async (req: AuthRequest, res: Response) => {
   try {
@@ -291,7 +267,7 @@ router.post('/photos', protect, photoUploadConfig.single('photo'), async (req: A
     user.photos = user.photos || [];
     const isMain = user.photos.length === 0;
     const newPhoto: IPhoto = {
-      url: uploadResult.url!,
+      filename: uploadResult.filename!,
       isMain
     };
     
@@ -348,10 +324,10 @@ router.post('/photos/bulk', protect, photoUploadConfig.array('photos', 6), async
     const failedUploads: string[] = [];
 
     uploadResults.forEach((result, index) => {
-      if (result.success && result.url) {
+      if (result.success && result.filename) {
         const isMain = user.photos.length === 0 && successfulUploads.length === 0;
         const newPhoto: IPhoto = {
-          url: result.url,
+          filename: result.filename,
           isMain
         };
         successfulUploads.push(newPhoto);
@@ -1048,44 +1024,24 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
       // Get cached signed URLs for photos
       let processedPhotos = u.photos;
       if (u.photos && u.photos.length > 0) {
+        // Now we directly use filenames from database (no URL extraction needed)
         const photoFilenames = u.photos
-          .map(photo => {
-            // Extract filename from Supabase signed URL
-            // Format: https://project.supabase.co/storage/v1/object/sign/user-photos/userid/filename.jpg?token=xyz
-            const url = photo.url;
-            const bucketPath = '/storage/v1/object/sign/user-photos/';
-            const bucketIndex = url.indexOf(bucketPath);
-            
-            if (bucketIndex !== -1) {
-              const pathStart = bucketIndex + bucketPath.length;
-              const queryIndex = url.indexOf('?', pathStart);
-              const filename = queryIndex !== -1
-                ? url.substring(pathStart, queryIndex)
-                : url.substring(pathStart);
-              return filename;
-            }
-            
-            // Fallback: try to extract from end of URL
-            const urlParts = url.split('/');
-            return urlParts[urlParts.length - 1].split('?')[0];
-          })
+          .map(photo => photo.filename)
           .filter(filename => filename && filename !== '');
 
         if (photoFilenames.length > 0) {
           console.log(`[Discover] Getting cached URLs for ${photoFilenames.length} photos for user ${u._id}`);
-          console.log(`[Discover] Extracted filenames:`, photoFilenames);
+          console.log(`[Discover] Using filenames:`, photoFilenames);
           const cachedUrls = await getMultiplePhotoUrls(photoFilenames);
           console.log(`[Discover] Cached URLs result:`, cachedUrls);
           
           // Update photo URLs with cached signed URLs
-          processedPhotos = u.photos.map((photo, index) => {
-            // Use the same filename that was extracted earlier
-            const extractedFilename = photoFilenames[index];
-            const cachedUrl = cachedUrls[extractedFilename];
+          processedPhotos = u.photos.map((photo) => {
+            const cachedUrl = cachedUrls[photo.filename];
             
             return {
               _id: photo._id,
-              url: cachedUrl || photo.url, // Use cached URL if available, otherwise fallback to original
+              url: cachedUrl || '', // Use cached URL if available, empty string as fallback
               isMain: photo.isMain
             };
           });

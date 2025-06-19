@@ -6,7 +6,7 @@ export type Gender = 'male' | 'female' | 'other';
 
 // Define interfaces for Profile-related data structures
 export interface IPhoto {
-  url: string; // Original Supabase signed URL for card deck (5min cache via Redis)
+  filename: string; // Filename in storage (e.g., "user123/photo1.jpg")
   selfViewUrl?: string; // Self-view URL stored in DB (10min expiration)
   selfViewUrlExpiration?: Date; // When selfViewUrl expires
   isMain: boolean;
@@ -120,7 +120,7 @@ const UserSchema: Schema = new Schema({
 
   // Profile fields
   photos: [{
-    url: { type: String, required: true },
+    filename: { type: String, required: true }, // Storage filename (e.g., "user123/photo1.jpg")
     selfViewUrl: { type: String, required: false }, // 10-minute self-view URL
     selfViewUrlExpiration: { type: Date, required: false }, // When selfViewUrl expires
     isMain: { type: Boolean, default: false }

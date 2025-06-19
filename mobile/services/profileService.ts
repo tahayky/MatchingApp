@@ -38,7 +38,7 @@ export interface ProfileResponse {
     user: string;
     photos: Array<{
       _id: string;
-      url: string;
+      filename: string;
       selfViewUrl?: string; // Self-view URL for user's own photos
       selfViewUrlExpiration?: string; // ISO date string
       isMain: boolean;
@@ -151,7 +151,7 @@ const profileService = {
     }
   },
 
-  async uploadProfilePhotoFormData(formData: FormData): Promise<{ success: boolean; photo?: { url: string; isMain: boolean }, photos?: any[], message?: string }> {
+  async uploadProfilePhotoFormData(formData: FormData): Promise<{ success: boolean; photo?: { _id: string; filename: string; isMain: boolean; selfViewUrl?: string; selfViewUrlExpiration?: string }, photos?: any[], message?: string }> {
     if (!(await isAuthenticated())) {
       return { success: false, message: 'Not authenticated' };
     }
@@ -222,7 +222,7 @@ const profileService = {
   },
 
   // Legacy method for backward compatibility
-  async uploadProfilePhoto(photoData: { data: string; mimeType: string; name: string; size?: number } | FormData): Promise<{ success: boolean; photo?: { url: string; isMain: boolean }, photos?: any[], message?: string }> {
+  async uploadProfilePhoto(photoData: { data: string; mimeType: string; name: string; size?: number } | FormData): Promise<{ success: boolean; photo?: { _id: string; filename: string; isMain: boolean; selfViewUrl?: string; selfViewUrlExpiration?: string }, photos?: any[], message?: string }> {
     // If it's FormData, use the new method
     if (photoData instanceof FormData) {
       return this.uploadProfilePhotoFormData(photoData);
