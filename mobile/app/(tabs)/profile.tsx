@@ -147,13 +147,23 @@ export default function ProfileScreen() {
         
         <ThemedView style={styles.profileCard}>
           <ThemedView style={styles.profileHeader}>
-            <Image 
+            <Image
               source={
-                profile?.photos?.find((p: any) => p.isMain)?.url 
-                  ? { uri: profile.photos.find((p: any) => p.isMain).url }
-                  : require('@/assets/images/react-logo.png')
-              } 
-              style={styles.profileImage} 
+                (() => {
+                  const mainPhoto = profile?.photos?.find((p: any) => p.isMain);
+                  if (!mainPhoto) return require('@/assets/images/react-logo.png');
+                  
+                  // Use self-view URL if available and not expired, otherwise use cached URL
+                  const imageUrl = mainPhoto.selfViewUrl &&
+                    mainPhoto.selfViewUrlExpiration &&
+                    new Date(mainPhoto.selfViewUrlExpiration) > new Date()
+                      ? mainPhoto.selfViewUrl
+                      : mainPhoto.url;
+                  
+                  return imageUrl ? { uri: imageUrl } : require('@/assets/images/react-logo.png');
+                })()
+              }
+              style={styles.profileImage}
             />
             <ThemedView style={styles.profileInfo}>
               <ThemedText type="title">{user?.name || 'No Name'}</ThemedText>
