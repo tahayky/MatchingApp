@@ -121,6 +121,8 @@ const UserSchema: Schema = new Schema({
   // Profile fields
   photos: [{
     url: { type: String, required: true },
+    selfViewUrl: { type: String, required: false }, // 10-minute self-view URL
+    selfViewUrlExpiration: { type: Date, required: false }, // When selfViewUrl expires
     isMain: { type: Boolean, default: false }
   }],
   bio: { type: String, maxlength: 500 },

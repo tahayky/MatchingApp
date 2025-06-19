@@ -512,7 +512,8 @@ export const cleanupExpiredPhotoCache = async (): Promise<{ cleaned: number; tot
  * Generate 10-minute self-view URL for user's own photos (stored in database)
  */
 export const generateSelfViewUrl = async (filename: string): Promise<{ url: string; expiration: Date } | null> => {
-  const SELF_VIEW_DURATION = 10 * 60; // 10 minutes
+  const SELF_VIEW_DURATION = 10 * 60; // 10 minutes signed URL
+  const EARLY_EXPIRATION_BUFFER = 3 * 60; // 3 minutes early expiration buffer
 
   try {
     const { data, error } = await supabase.storage
@@ -524,9 +525,11 @@ export const generateSelfViewUrl = async (filename: string): Promise<{ url: stri
       return null;
     }
 
-    const expiration = new Date(Date.now() + (SELF_VIEW_DURATION * 1000));
+    // Set expiration 3 minutes earlier than actual URL expiration
+    // This ensures new URL is generated before the current one expires
+    const expiration = new Date(Date.now() + ((SELF_VIEW_DURATION - EARLY_EXPIRATION_BUFFER) * 1000));
     
-    console.log(`[Self-View URL] Generated 10-min URL for ${filename}, expires at ${expiration.toISOString()}`);
+    console.log(`[Self-View URL] Generated 10-min URL for ${filename}, will refresh at ${expiration.toISOString()} (3min early)`);
     
     return {
       url: data.signedUrl,
@@ -561,13 +564,19 @@ export const getSelfViewUrl = async (
   expiration: Date | undefined,
   filename: string
 ): Promise<{ url: string; expiration: Date } | null> => {
-  // If we have a valid existing URL, return it
-  if (currentUrl && expiration && !isSelfViewUrlExpired(expiration)) {
+  // If expiration is not set, generate new URL immediately
+  if (!expiration) {
+    console.log(`[Self-View URL] No expiration found for ${filename}, generating new URL`);
+    return await generateSelfViewUrl(filename);
+  }
+
+  // If we have a valid existing URL and expiration, check if it's still valid
+  if (currentUrl && !isSelfViewUrlExpired(expiration)) {
     console.log(`[Self-View URL] Using existing valid URL for ${filename}`);
     return { url: currentUrl, expiration };
   }
 
-  // Generate new URL
+  // Generate new URL if expired or missing
   console.log(`[Self-View URL] Generating new URL for ${filename} (previous expired or missing)`);
   return await generateSelfViewUrl(filename);
 };
