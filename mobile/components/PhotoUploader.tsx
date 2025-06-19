@@ -22,6 +22,8 @@ const photoSize = (width - 60) / 3; // 3 photos per row with margins
 interface Photo {
   _id?: string;
   url: string;
+  selfViewUrl?: string; // Self-view URL for user's own photos
+  selfViewUrlExpiration?: string; // ISO date string
   isMain: boolean;
 }
 
@@ -268,14 +270,22 @@ export default function PhotoUploader({
       
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
         <View style={styles.photosContainer}>
-          {photos.map((photo, index) => (
-            <TouchableOpacity
-              key={photo._id || index}
-              style={[styles.photoContainer, photo.isMain && styles.mainPhotoContainer]}
-              onPress={() => showPhotoMenu(photo)}
-              disabled={loadingPhotoId === photo._id}
-            >
-              <Image source={{ uri: photo.url }} style={styles.photo} />
+          {photos.map((photo, index) => {
+            // Use self-view URL if available and not expired, otherwise fallback to regular URL
+            const imageUrl = photo.selfViewUrl &&
+              photo.selfViewUrlExpiration &&
+              new Date(photo.selfViewUrlExpiration) > new Date()
+                ? photo.selfViewUrl
+                : photo.url;
+            
+            return (
+              <TouchableOpacity
+                key={photo._id || index}
+                style={[styles.photoContainer, photo.isMain && styles.mainPhotoContainer]}
+                onPress={() => showPhotoMenu(photo)}
+                disabled={loadingPhotoId === photo._id}
+              >
+                <Image source={{ uri: imageUrl }} style={styles.photo} />
               {photo.isMain && (
                 <View style={styles.mainBadge}>
                   <ThemedText style={styles.mainBadgeText}>MAIN</ThemedText>
@@ -286,8 +296,9 @@ export default function PhotoUploader({
                   <ActivityIndicator color="#fff" />
                 </View>
               )}
-            </TouchableOpacity>
-          ))}
+              </TouchableOpacity>
+            );
+          })}
           
           {photos.length < maxPhotos && (
             <TouchableOpacity

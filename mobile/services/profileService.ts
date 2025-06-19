@@ -39,6 +39,8 @@ export interface ProfileResponse {
     photos: Array<{
       _id: string;
       url: string;
+      selfViewUrl?: string; // Self-view URL for user's own photos
+      selfViewUrlExpiration?: string; // ISO date string
       isMain: boolean;
     }>;
     bio?: string;

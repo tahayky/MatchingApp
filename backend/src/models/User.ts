@@ -6,7 +6,9 @@ export type Gender = 'male' | 'female' | 'other';
 
 // Define interfaces for Profile-related data structures
 export interface IPhoto {
-  url: string;
+  url: string; // Original Supabase signed URL for card deck (5min cache via Redis)
+  selfViewUrl?: string; // Self-view URL stored in DB (10min expiration)
+  selfViewUrlExpiration?: Date; // When selfViewUrl expires
   isMain: boolean;
   _id?: mongoose.Types.ObjectId;
 }

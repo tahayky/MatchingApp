@@ -17,7 +17,8 @@ import {
   deleteFromSupabase,
   photoUploadConfig,
   PhotoUploadResult,
-  getMultiplePhotoUrls
+  getMultiplePhotoUrls,
+  getSelfViewUrl
 } from '../services/photoProcessor';
 
 interface AuthRequest extends Request {
@@ -28,6 +29,109 @@ interface AuthRequest extends Request {
 // Old local storage configuration removed - now using Supabase Storage
 
 const router: Router = express.Router();
+
+// @route   GET /api/users/profile/me
+// @desc    Get current user's complete profile with self-view photo URLs
+// @access  Private
+router.get('/me', protect, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
+    }
+
+    const user = await User.findById(req.user._id).select('-password');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Process photos to include self-view URLs
+    const processedPhotos = await Promise.all(user.photos.map(async (photo) => {
+      // Extract filename from the original URL
+      const filename = extractFilenameFromUrl(photo.url);
+      if (!filename) {
+        console.error('Could not extract filename from URL:', photo.url);
+        return photo; // Return original photo if filename extraction fails
+      }
+
+      // Get or generate self-view URL
+      const selfViewResult = await getSelfViewUrl(
+        photo.selfViewUrl,
+        photo.selfViewUrlExpiration,
+        filename
+      );
+
+      if (selfViewResult) {
+        // Update photo with new self-view URL
+        photo.selfViewUrl = selfViewResult.url;
+        photo.selfViewUrlExpiration = selfViewResult.expiration;
+        
+        console.log(`[Self-View] Updated URL for ${filename}, expires at ${selfViewResult.expiration.toISOString()}`);
+      }
+
+      return photo;
+    }));
+
+    // Save updated self-view URLs to database
+    user.photos = processedPhotos;
+    await user.save();
+
+    res.json({
+      success: true,
+      profile: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        gender: user.gender,
+        interestedIn: user.interestedIn,
+        dateOfBirth: user.dateOfBirth,
+        bio: user.bio,
+        photos: processedPhotos,
+        location: user.location,
+        interests: user.interests,
+        occupation: user.occupation,
+        education: user.education,
+        height: user.height,
+        preferences: user.preferences,
+        subscriptionTier: user.subscriptionTier,
+        subscriptionExpiresAt: user.subscriptionExpiresAt,
+        dailyLikeQuota: user.dailyLikeQuota,
+        remainingLikes: user.remainingLikes,
+        likesResetTime: user.likesResetTime,
+        isProfileComplete: user.isProfileComplete,
+        lastActive: user.lastActive
+      }
+    });
+  } catch (error) {
+    console.error('Get profile error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Helper function to extract filename from URL
+const extractFilenameFromUrl = (url: string): string | null => {
+  try {
+    const urlObj = new URL(url);
+    const bucketPath = '/storage/v1/object/sign/user-photos/';
+    const bucketIndex = url.indexOf(bucketPath);
+    
+    if (bucketIndex !== -1) {
+      const pathStart = bucketIndex + bucketPath.length;
+      const queryIndex = url.indexOf('?', pathStart);
+      const filename = queryIndex !== -1
+        ? url.substring(pathStart, queryIndex)
+        : url.substring(pathStart);
+      return filename;
+    }
+    
+    // Fallback: try to extract from end of URL
+    const pathname = urlObj.pathname;
+    const segments = pathname.split('/');
+    return segments[segments.length - 1] || null;
+  } catch (error) {
+    console.error('Error extracting filename from URL:', error);
+    return null;
+  }
+};
 
 router.post('/', protect, async (req: AuthRequest, res: Response) => {
   try {
