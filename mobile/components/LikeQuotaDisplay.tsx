@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
-import apiClient from '@/services/apiClient';
+import { subscriptionService } from '@/services';
 
 interface QuotaInfo {
   remaining: number;
@@ -16,12 +16,12 @@ export function LikeQuotaDisplay() {
   const fetchQuotaInfo = async () => {
     try {
       console.log('🔄 Fetching quota info...');
-      const response = await apiClient.get('/users/profile/me');
+      const response = await subscriptionService.getLikeQuota();
       
-      if (response.data.success && response.data.user) {
+      if (response.success && response.quotaInfo) {
         const newQuotaInfo = {
-          remaining: response.data.user.remainingLikes || 0,
-          total: response.data.user.dailyLikeQuota || 0
+          remaining: response.quotaInfo.remaining || 0,
+          total: response.quotaInfo.total || 0
         };
         console.log('✅ Quota updated:', newQuotaInfo);
         setQuotaInfo(newQuotaInfo);
@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     paddingHorizontal: 20,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    backgroundColor: 'rgba(255,255,255,0.2)', // Çok hafif beyaz transparan
     borderRadius: 20,
     marginHorizontal: 20,
     marginTop: 10,

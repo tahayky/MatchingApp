@@ -91,7 +91,7 @@ export default function HomeScreen() {
           const defaultImage = require('@/assets/images/react-logo.png');
           let profileImage = defaultImage;
           const mainPhoto = profile.photos?.find((photo: any) => photo.isMain);
-          if (mainPhoto?.url) {
+          if (mainPhoto?.url && mainPhoto.url.trim() !== '') {
             profileImage = { uri: mainPhoto.url };
           }
           let age;
@@ -333,30 +333,36 @@ export default function HomeScreen() {
         <ThemedText>{matches.length} matches so far</ThemedText>
       </ThemedView>
       
-      <LikeQuotaDisplay />
+      {/* Ana content alanı */}
+      <ThemedView style={styles.mainContent}>
+        {profiles.length === 0 && !loading && allProfilesLoaded && (
+           <ThemedView style={[styles.container, styles.centered]}>
+              <ThemedText type="subtitle">No more profiles to show.</ThemedText>
+              <ThemedText>Check back later!</ThemedText>
+           </ThemedView>
+        )}
+        {profiles.length === 0 && loading && (
+           <ThemedView style={[styles.container, styles.centered]}>
+              <ActivityIndicator size="large" />
+              <ThemedText>Loading profiles...</ThemedText>
+           </ThemedView>
+        )}
 
-      {profiles.length === 0 && !loading && allProfilesLoaded && (
-         <ThemedView style={[styles.container, styles.centered]}>
-            <ThemedText type="subtitle">No more profiles to show.</ThemedText>
-            <ThemedText>Check back later!</ThemedText>
-         </ThemedView>
-      )}
-      {profiles.length === 0 && loading && ( 
-         <ThemedView style={[styles.container, styles.centered]}>
-            <ActivityIndicator size="large" />
-            <ThemedText>Loading profiles...</ThemedText>
-         </ThemedView>
-      )}
-
-      {profiles.length > 0 && (
-        <CardDeck
-          profiles={profiles}
-          onSwipeLeft={handleSwipeLeft}
-          onSwipeRight={handleSwipeRight}
-          onDeckEmpty={handleDeckEmpty}
-          likeLoading={likeLoading}
-        />
-      )}
+        {profiles.length > 0 && (
+          <CardDeck
+            profiles={profiles}
+            onSwipeLeft={handleSwipeLeft}
+            onSwipeRight={handleSwipeRight}
+            onDeckEmpty={handleDeckEmpty}
+            likeLoading={likeLoading}
+          />
+        )}
+        
+        {/* Floating overlay kalpler - kartların üzerinde */}
+        <ThemedView style={styles.quotaOverlay}>
+          <LikeQuotaDisplay />
+        </ThemedView>
+      </ThemedView>
     </ThemedView>
   );
 }
@@ -367,7 +373,7 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   header: {
-    paddingTop: 60, 
+    paddingTop: 60,
     paddingBottom: 20,
     alignItems: 'center',
   },
@@ -379,5 +385,17 @@ const styles = StyleSheet.create({
     marginTop: 10,
     textAlign: 'center',
     paddingHorizontal: 20,
+  },
+  mainContent: {
+    flex: 1,
+    position: 'relative',
+  },
+  quotaOverlay: {
+    position: 'absolute',
+    top: 20,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    pointerEvents: 'none', // Kalplere dokunulmasın, kartlara odaklanılsın
   }
 });

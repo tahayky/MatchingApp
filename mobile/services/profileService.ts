@@ -1,7 +1,44 @@
 import apiClient from './apiClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { profileCache } from '@/utils/cacheUtils';
+import { profileCache, saveToCache, getFromCache, clearCache } from '@/utils/cacheUtils';
 import { checkInternetConnection } from '@/utils/networkUtils';
+
+// Cache key for my profile
+const MY_PROFILE_CACHE_KEY = 'my_profile';
+const APP_SESSION_KEY = 'app_session_id';
+
+// Helper function to clear profile cache when profile is updated
+const clearProfileCache = async () => {
+  await clearCache(MY_PROFILE_CACHE_KEY);
+  console.log('[ProfileService] Profil cache\'i temizlendi - değişiklik yapıldı');
+};
+
+// Check if this is a new app session (first time opening app)
+const isNewAppSession = async (): Promise<boolean> => {
+  try {
+    const storedSessionId = await AsyncStorage.getItem(APP_SESSION_KEY);
+    const currentSessionId = Date.now().toString();
+    
+    if (!storedSessionId) {
+      // İlk açılış
+      await AsyncStorage.setItem(APP_SESSION_KEY, currentSessionId);
+      return true;
+    }
+    
+    // Session 30 dakikadan eski ise yeni session sayılır (uygulama kapatılıp açılmış)
+    const sessionAge = Date.now() - parseInt(storedSessionId);
+    const isNewSession = sessionAge > 30 * 60 * 1000; // 30 dakika
+    
+    if (isNewSession) {
+      await AsyncStorage.setItem(APP_SESSION_KEY, currentSessionId);
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    return true; // Hata durumunda fresh data çek
+  }
+};
 
 export interface ProfileData {
   bio: string;
@@ -119,10 +156,16 @@ const profileService = {
         throw new Error('No internet connection');
       }
       const response = await apiClient.post<ProfileResponse>('/users/profile', profileData);
+      
+      // Başarılı profil güncelleme sonrası cache'i temizle
+      if (response.data.success) {
+        await clearProfileCache();
+      }
+      
       return response.data;
     } catch (error) {
       console.error('Error creating/updating profile:', error);
-      throw error; 
+      throw error;
     }
   },
 
@@ -132,11 +175,37 @@ const profileService = {
     }
 
     try {
+      // Yeni uygulama oturumunu kontrol et
+      const isNewSession = await isNewAppSession();
+      
+      if (!isNewSession) {
+        // Cache'den veri dön
+        const cachedProfile = await getFromCache(MY_PROFILE_CACHE_KEY) as ProfileResponse;
+        if (cachedProfile && cachedProfile.success !== undefined) {
+          console.log('[ProfileService] Cache\'den profil döndürülüyor');
+          return cachedProfile;
+        }
+      }
+      
       const isConnected = await checkInternetConnection();
       if (!isConnected) {
+        // İnternet yoksa cache'den dön
+        const cachedProfile = await getFromCache(MY_PROFILE_CACHE_KEY) as ProfileResponse;
+        if (cachedProfile && cachedProfile.success !== undefined) {
+          console.log('[ProfileService] İnternet yok - cache\'den profil döndürülüyor');
+          return cachedProfile;
+        }
         throw new Error('No internet connection');
       }
+      
+      console.log('[ProfileService] Fresh profil verisi çekiliyor - sebep:', isNewSession ? 'yeni uygulama oturumu' : 'cache bulunamadı');
       const response = await apiClient.get<ProfileResponse>('/users/profile/me');
+      
+      // Cache'e kaydet
+      if (response.data.success) {
+        await saveToCache(MY_PROFILE_CACHE_KEY, response.data);
+      }
+      
       return response.data;
     } catch (error: any) {
       if (error.response?.status === 404) {
@@ -146,6 +215,14 @@ const profileService = {
           message: 'Profile not yet created'
         };
       }
+      
+      // Hata durumunda cache'den dön
+      const cachedProfile = await getFromCache(MY_PROFILE_CACHE_KEY) as ProfileResponse;
+      if (cachedProfile && cachedProfile.success !== undefined) {
+        console.log('[ProfileService] API hatası - cache\'den profil döndürülüyor');
+        return cachedProfile;
+      }
+      
       console.log('Error fetching profile:', error.message);
       return { success: false, message: 'Error fetching profile', profile: null };
     }
@@ -208,6 +285,11 @@ const profileService = {
       
       if (!response.ok) {
         throw new Error(result.message || 'Upload failed');
+      }
+      
+      // Başarılı foto upload sonrası cache'i temizle
+      if (result.success) {
+        await clearProfileCache();
       }
       
       return result;
@@ -311,6 +393,12 @@ const profileService = {
         };
       }
       const response = await apiClient.delete(`/users/profile/photos/${photoId}`);
+      
+      // Başarılı foto silme sonrası cache'i temizle
+      if (response.data.success) {
+        await clearProfileCache();
+      }
+      
       return response.data;
     } catch (error: any) {
       console.error('Error deleting photo:', error);
@@ -333,7 +421,13 @@ const profileService = {
         };
       }
       const response = await apiClient.put(`/users/profile/photos/${photoId}/main`);
-      return response.data; 
+      
+      // Başarılı ana foto değişikliği sonrası cache'i temizle
+      if (response.data.success) {
+        await clearProfileCache();
+      }
+      
+      return response.data;
     } catch (error) {
       console.error('Error setting main photo:', error);
       return { success: false, message: 'Operation failed' };
@@ -431,11 +525,65 @@ const profileService = {
     }
     try {
       const response = await apiClient.put('/users/me', userData);
+      
+      // Başarılı kullanıcı bilgi güncellemesi sonrası cache'i temizle
+      if (response.data.success) {
+        await clearProfileCache();
+      }
+      
       return response.data;
     } catch (error) {
       console.error('Error updating user info:', error);
       throw error; 
     }
+  }
+};
+
+// Export the standalone function for direct use with new session tracking
+export const getMyProfile = async (forceRefresh = false): Promise<ProfileResponse> => {
+  try {
+    console.log('[ProfileService] getMyProfile çağrıldı, forceRefresh:', forceRefresh);
+    
+    // Yeni uygulama oturumunu kontrol et
+    const isNewSession = await isNewAppSession();
+    const shouldFetchFresh = forceRefresh || isNewSession;
+    
+    if (shouldFetchFresh) {
+      console.log('[ProfileService] Taze veri çekiliyor - sebep:', isNewSession ? 'yeni uygulama oturumu' : 'force refresh');
+      
+      const response = await apiClient.get('/users/profile/me');
+      
+      // Cache the fresh data
+      await saveToCache(MY_PROFILE_CACHE_KEY, response.data);
+      console.log('[ProfileService] Taze profil verisi cache\'e kaydedildi');
+      
+      return response.data;
+    }
+    
+    // Cache'den veri dön
+    const cachedProfile = await getFromCache(MY_PROFILE_CACHE_KEY) as ProfileResponse;
+    if (cachedProfile && cachedProfile.success !== undefined) {
+      console.log('[ProfileService] Cache\'den profil döndürülüyor');
+      return cachedProfile;
+    }
+    
+    // Cache yoksa API'den çek
+    console.log('[ProfileService] Cache bulunamadı, API\'den çekiliyor');
+    const response = await apiClient.get('/users/profile/me');
+    await saveToCache(MY_PROFILE_CACHE_KEY, response.data);
+    
+    return response.data;
+  } catch (error) {
+    console.error('[ProfileService] getMyProfile hatası:', error);
+    
+    // Fallback to cache if available
+    const cachedProfile = await getFromCache(MY_PROFILE_CACHE_KEY) as ProfileResponse;
+    if (cachedProfile && cachedProfile.success !== undefined) {
+      console.log('[ProfileService] API hatası - cache\'den profil döndürülüyor');
+      return cachedProfile;
+    }
+    
+    throw error;
   }
 };
 
