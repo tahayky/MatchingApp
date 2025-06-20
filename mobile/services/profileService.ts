@@ -17,23 +17,16 @@ const clearProfileCache = async () => {
 const isNewAppSession = async (): Promise<boolean> => {
   try {
     const storedSessionId = await AsyncStorage.getItem(APP_SESSION_KEY);
-    const currentSessionId = Date.now().toString();
     
     if (!storedSessionId) {
-      // İlk açılış
+      // İlk açılış - session ID kaydet ve fresh veri çek
+      const currentSessionId = Date.now().toString();
       await AsyncStorage.setItem(APP_SESSION_KEY, currentSessionId);
       return true;
     }
     
-    // Session 30 dakikadan eski ise yeni session sayılır (uygulama kapatılıp açılmış)
-    const sessionAge = Date.now() - parseInt(storedSessionId);
-    const isNewSession = sessionAge > 30 * 60 * 1000; // 30 dakika
-    
-    if (isNewSession) {
-      await AsyncStorage.setItem(APP_SESSION_KEY, currentSessionId);
-      return true;
-    }
-    
+    // Session mevcut - cache'den veri dön (timeout yok)
+    // Fresh veri sadece değişiklik sonrası cache temizlendiğinde çekilecek
     return false;
   } catch (error) {
     return true; // Hata durumunda fresh data çek
