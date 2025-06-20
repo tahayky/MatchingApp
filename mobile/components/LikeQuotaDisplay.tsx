@@ -35,16 +35,26 @@ export function LikeQuotaDisplay() {
 
   useEffect(() => {
     fetchQuotaInfo();
-    // Refresh quota info every 30 seconds
-    const interval = setInterval(fetchQuotaInfo, 30000);
-    return () => clearInterval(interval);
+    // Sadece component mount'da bir kez çek, sürekli interval yok
   }, []);
 
   // Also refresh when a like is used
   useEffect(() => {
-    const handleLikeUsed = () => {
+    const handleLikeUsed = async () => {
       console.log('📍 Like event received, refreshing quota...');
-      fetchQuotaInfo();
+      try {
+        const response = await subscriptionService.refreshLikeQuota();
+        if (response.success && response.quotaInfo) {
+          const newQuotaInfo = {
+            remaining: response.quotaInfo.remaining || 0,
+            total: response.quotaInfo.total || 0
+          };
+          console.log('✅ Quota refreshed after like:', newQuotaInfo);
+          setQuotaInfo(newQuotaInfo);
+        }
+      } catch (error) {
+        console.error('Error refreshing quota after like:', error);
+      }
     };
 
     // Listen for custom event when like is used
