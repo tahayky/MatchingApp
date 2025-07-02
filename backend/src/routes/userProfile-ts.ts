@@ -147,52 +147,6 @@ router.post('/', protect, async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.get('/me', protect, async (req: AuthRequest, res: Response) => {
-  try {
-    if (!req.user || !req.user._id) {
-      return res.status(401).json({ success: false, message: 'Not authorized, user not found'});
-    }
-    
-    const userProfile = await User.findById(req.user._id).select('-password');
-    if (!userProfile) {
-      return res.status(404).json({ success: false, message: 'User profile not found. Please complete your profile.'});
-    }
-
-    // Fotoğraf URL'lerini dinamik olarak cache'den al
-    if (userProfile.photos && userProfile.photos.length > 0) {
-      const photoFilenames = userProfile.photos
-        .map(photo => photo.filename)
-        .filter(filename => filename && filename !== '');
-
-      if (photoFilenames.length > 0) {
-        console.log(`[Profile /me] Getting cached URLs for ${photoFilenames.length} photos`);
-        const cachedUrls = await getMultiplePhotoUrls(photoFilenames);
-        
-        // Fotoğraf URL'lerini güncelle
-        userProfile.photos = userProfile.photos.map((photo, index) => {
-          // Use the same filename that was extracted earlier
-          const extractedFilename = photoFilenames[index];
-          const cachedUrl = cachedUrls[extractedFilename];
-          
-          return {
-            _id: photo._id,
-            filename: photo.filename,
-            url: cachedUrl || '', // Cache'de yoksa boş string
-            isMain: photo.isMain,
-            selfViewUrl: photo.selfViewUrl,
-            selfViewUrlExpiration: photo.selfViewUrlExpiration
-          };
-        });
-      }
-    }
-
-    res.json({ success: true, user: userProfile });
-  } catch (error: unknown) {
-    console.error('Get my profile error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred. 😖';
-    res.status(500).json({ success: false, message: 'Server error fetching profile', error: errorMessage });
-  }
-});
 
 // Upload single photo with Supabase Storage - supports both FormData and Base64
 router.post('/photos', protect, photoUploadConfig.single('photo'), async (req: AuthRequest, res: Response) => {
