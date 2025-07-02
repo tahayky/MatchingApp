@@ -1,6 +1,7 @@
 import express, { Request, Response, Router } from 'express';
 import User, { IUser } from '../models/User'; // Profile is now part of User
 import { protect } from '../middleware/auth';
+import { getSelfViewUrl } from '../services/photoProcessor';
 
 const router: Router = express.Router();
 
@@ -37,6 +38,55 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
       });
     }
 
+    // Process photos to check for expired selfViewUrl
+    let processedPhotos = user.photos;
+    if (user.photos && user.photos.length > 0) {
+      processedPhotos = await Promise.all(user.photos.map(async (photo) => {
+        const filename = photo.filename;
+        if (!filename) {
+          console.error('Photo missing filename:', photo);
+          return photo;
+        }
+
+        // Check if current URL is expired first
+        const isCurrentExpired = photo.selfViewUrlExpiration &&
+          new Date() >= photo.selfViewUrlExpiration;
+
+        if (isCurrentExpired) {
+          console.log(`[Users /me] Expired URL detected for ${filename}, clearing expired data`);
+          // Clear expired URL immediately
+          photo.selfViewUrl = undefined;
+          photo.selfViewUrlExpiration = undefined;
+        }
+
+        // Get or generate self-view URL
+        const selfViewResult = await getSelfViewUrl(
+          photo.selfViewUrl,
+          photo.selfViewUrlExpiration,
+          filename
+        );
+
+        if (selfViewResult) {
+          // Update photo with new self-view URL
+          photo.selfViewUrl = selfViewResult.url;
+          photo.selfViewUrlExpiration = selfViewResult.expiration;
+          
+          console.log(`[Users /me] Updated URL for ${filename}, expires at ${selfViewResult.expiration.toISOString()}`);
+        } else {
+          console.error(`[Users /me] Failed to generate URL for ${filename}, clearing expired data`);
+          // If we can't generate new URL, clear the expired one
+          photo.selfViewUrl = undefined;
+          photo.selfViewUrlExpiration = undefined;
+        }
+
+        return photo;
+      }));
+
+      // Save updated self-view URLs to database
+      user.photos = processedPhotos;
+      await user.save();
+    }
+
     res.json({
       success: true,
       user: {
@@ -46,6 +96,7 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
         gender: user.gender,
         interestedIn: user.interestedIn,
         dateOfBirth: user.dateOfBirth,
+        photos: processedPhotos,
         lastActive: user.lastActive,
         isProfileComplete: user.isProfileComplete
       }
@@ -113,15 +164,67 @@ router.put('/me', protect, async (req: AuthRequest, res: Response) => {
 // @route   GET /api/users/:id
 // @desc    Get user by ID (with basic profile info)
 // @access  Private
-router.get('/:id', protect, async (req: Request, res: Response) => {
+router.get('/:id', protect, async (req: AuthRequest, res: Response) => {
   try {
     const user = await User.findById(req.params.id).select('-password');
     
     if (!user) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'User not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
       });
+    }
+
+    // Process photos to check for expired selfViewUrl (for profile owner only)
+    let processedPhotos = user.photos;
+    const authUser = req.user as IUser;
+    
+    // Only check and update expired URLs if this is the user's own profile
+    if (authUser && user._id.equals(authUser._id) && user.photos && user.photos.length > 0) {
+      processedPhotos = await Promise.all(user.photos.map(async (photo) => {
+        const filename = photo.filename;
+        if (!filename) {
+          console.error('Photo missing filename:', photo);
+          return photo;
+        }
+
+        // Check if current URL is expired first
+        const isCurrentExpired = photo.selfViewUrlExpiration &&
+          new Date() >= photo.selfViewUrlExpiration;
+
+        if (isCurrentExpired) {
+          console.log(`[Users /:id] Expired URL detected for ${filename}, clearing expired data`);
+          // Clear expired URL immediately
+          photo.selfViewUrl = undefined;
+          photo.selfViewUrlExpiration = undefined;
+        }
+
+        // Get or generate self-view URL
+        const selfViewResult = await getSelfViewUrl(
+          photo.selfViewUrl,
+          photo.selfViewUrlExpiration,
+          filename
+        );
+
+        if (selfViewResult) {
+          // Update photo with new self-view URL
+          photo.selfViewUrl = selfViewResult.url;
+          photo.selfViewUrlExpiration = selfViewResult.expiration;
+          
+          console.log(`[Users /:id] Updated URL for ${filename}, expires at ${selfViewResult.expiration.toISOString()}`);
+        } else {
+          console.error(`[Users /:id] Failed to generate URL for ${filename}, clearing expired data`);
+          // If we can't generate new URL, clear the expired one
+          photo.selfViewUrl = undefined;
+          photo.selfViewUrlExpiration = undefined;
+        }
+
+        return photo;
+      }));
+
+      // Save updated self-view URLs to database
+      user.photos = processedPhotos;
+      await user.save();
     }
 
     // Profile info is now part of the user object
@@ -133,7 +236,7 @@ router.get('/:id', protect, async (req: Request, res: Response) => {
         gender: user.gender,
         // Directly access profile fields from the user object
         bio: user.bio,
-        photos: user.photos,
+        photos: processedPhotos,
         occupation: user.occupation,
         education: user.education,
         interests: user.interests,
@@ -147,10 +250,10 @@ router.get('/:id', protect, async (req: Request, res: Response) => {
   } catch (error: unknown) {
     console.error('Get user error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error', 
-      error: errorMessage 
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: errorMessage
     });
   }
 });

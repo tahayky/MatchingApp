@@ -53,6 +53,17 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
         return photo; // Return original photo if filename is missing
       }
 
+      // Check if current URL is expired first
+      const isCurrentExpired = photo.selfViewUrlExpiration &&
+        new Date() >= photo.selfViewUrlExpiration;
+
+      if (isCurrentExpired) {
+        console.log(`[Self-View] Expired URL detected for ${filename}, clearing expired data`);
+        // Clear expired URL immediately
+        photo.selfViewUrl = undefined;
+        photo.selfViewUrlExpiration = undefined;
+      }
+
       // Get or generate self-view URL
       const selfViewResult = await getSelfViewUrl(
         photo.selfViewUrl,
@@ -66,6 +77,11 @@ router.get('/me', protect, async (req: AuthRequest, res: Response) => {
         photo.selfViewUrlExpiration = selfViewResult.expiration;
         
         console.log(`[Self-View] Updated URL for ${filename}, expires at ${selfViewResult.expiration.toISOString()}`);
+      } else {
+        console.error(`[Self-View] Failed to generate URL for ${filename}, clearing expired data`);
+        // If we can't generate new URL, clear the expired one
+        photo.selfViewUrl = undefined;
+        photo.selfViewUrlExpiration = undefined;
       }
 
       return photo;
