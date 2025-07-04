@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { StyleSheet, View, Dimensions, Text } from 'react-native';
+import { StyleSheet, View, Dimensions, Text, Image } from 'react-native';
 
 import { ThemedView } from './ThemedView';
 import { ThemedText } from './ThemedText';
@@ -62,16 +62,40 @@ export function CardDeck({ profiles, onSwipeLeft, onSwipeRight, onDeckEmpty, lik
   return (
     <ThemedView style={styles.container}>
       {currentProfiles.length > 0 ? (
-        <>
-          {/* Only render the top card for better performance */}
-          <SwipeableCard
-            key={currentProfiles[0].id}
-            profile={currentProfiles[0]}
-            onSwipeLeft={handleSwipeLeft}
-            onSwipeRight={handleSwipeRight}
-            disabled={likeLoading}
-          />
-        </>
+        <View style={styles.deckContainer}>
+          {/* Show actual next profiles as background cards */}
+          {currentProfiles.slice(1, 4).reverse().map((profile, index) => (
+            <View
+              key={`background-${profile.id}`}
+              style={[
+                styles.backgroundCard,
+                {
+                  transform: [
+                    { scale: 1 - (index + 1) * 0.06 }, // Progressive size reduction
+                    { translateY: (index + 1) * 8 }, // Stack cards downward
+                  ],
+                  zIndex: 10 - (index + 1), // Layer cards properly
+                }
+              ]}
+            >
+              <Image
+                source={profile.image}
+                style={styles.backgroundCardImage}
+              />
+            </View>
+          ))}
+          
+          {/* Main interactive card */}
+          <View style={styles.mainCardContainer}>
+            <SwipeableCard
+              key={currentProfiles[0].id}
+              profile={currentProfiles[0]}
+              onSwipeLeft={handleSwipeLeft}
+              onSwipeRight={handleSwipeRight}
+              disabled={likeLoading}
+            />
+          </View>
+        </View>
       ) : (
         <ThemedView style={styles.emptyDeckContainer}>
           <ThemedText type="title">No more profiles!</ThemedText>
@@ -87,6 +111,47 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  deckContainer: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 15,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 25,
+  },
+  backgroundCard: {
+    position: 'absolute',
+    width: width * 0.9,
+    height: height * 0.6,
+    borderRadius: 20,
+    backgroundColor: '#e8e8e8',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 15,
+    overflow: 'hidden',
+  },
+  backgroundCardImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+    opacity: 0.7,
+  },
+  mainCardContainer: {
+    zIndex: 20,
+    position: 'relative',
   },
   emptyDeckContainer: {
     flex: 1,
