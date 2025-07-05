@@ -907,6 +907,16 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
         console.log(`[EXCLUSION DEBUG] Excluded (liked): ${match.targetUser}`);
       });
     }
+    
+    // Debug liked users (from liked field)
+    if (currentUser.liked && currentUser.liked.length > 0) {
+      console.log(`[EXCLUSION DEBUG] Adding ${currentUser.liked.length} liked users to exclude list`);
+      currentUser.liked.forEach((likedUserId: mongoose.Types.ObjectId) => {
+        usersToExclude.push(likedUserId);
+        console.log(`[EXCLUSION DEBUG] Excluded (from liked field): ${likedUserId}`);
+      });
+    }
+    
     // Debug existing matches
     const existingMatches = await Match.find({
         $or: [

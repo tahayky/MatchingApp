@@ -336,10 +336,11 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
           await targetUser.save();
         }
         
-        // Add to currentUser's likedBy array (reciprocal, though action is initiated by current user)
-        // This might be redundant if we only care about who liked whom.
-        // For now, let's assume `likedBy` means "users who have liked me".
-        // The match document itself signifies the current user's like.
+        // Add targetUser to currentUser's liked array (outgoing like)
+        if (!currentUser.liked.includes(targetUser._id)) {
+          currentUser.liked.push(targetUser._id);
+          await currentUser.save();
+        }
 
         let quotaInfo;
         try {
@@ -379,6 +380,12 @@ router.post('/action', protect, async (req: AuthRequest, res: Response) => {
                 likedAt: new Date()
             } as ILikeData);
             await targetUser.save();
+        }
+        
+        // Add targetUser to currentUser's liked array (outgoing like)
+        if (!currentUser.liked.includes(targetUser._id)) {
+          currentUser.liked.push(targetUser._id);
+          await currentUser.save();
         }
       }
     } else if (action === 'pass') {
