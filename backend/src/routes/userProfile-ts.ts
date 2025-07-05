@@ -864,7 +864,6 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
     currentUser.preferences = currentUser.preferences || { ageRange: {min: 18, max: 100}, distance: 50};
     currentUser.rejected = currentUser.rejected || [];
     currentUser.likedBy = currentUser.likedBy || [];
-    currentUser.viewedProfiles = currentUser.viewedProfiles || [];
 
     const interestedInGenders = currentUser.interestedIn || [];
     const query: mongoose.FilterQuery<IUser> = {
@@ -935,9 +934,6 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
     // In a swipe app, users either like or reject - no need for "viewed but no action" tracking
     // Rejection is already handled by the rejected list above
     // Likes are already handled by the likedMatches above
-    if (currentUser.viewedProfiles && currentUser.viewedProfiles.length > 0) {
-      console.log(`[INFO] User has ${currentUser.viewedProfiles.length} viewed profiles, but NOT excluding them (viewedProfiles system removed)`);
-    }
 
     if (usersToExclude.length > 0) {
       query._id = {
@@ -1016,20 +1012,7 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
       };
     }));
 
-    // Add fetched profiles to currentUser's viewedProfiles
-    const newViewedProfileIds = potentialMatches.map(p => p._id);
-    let updatedViewedProfiles = false;
-    newViewedProfileIds.forEach(profileId => {
-      if (!currentUser.viewedProfiles.find(vpId => vpId.equals(profileId))) {
-        currentUser.viewedProfiles.push(profileId);
-        updatedViewedProfiles = true;
-      }
-    });
-
-    if (updatedViewedProfiles) {
-      await currentUser.save();
-      console.log(`[DISCOVER PROFILES] Updated viewedProfiles for User ID: ${currentUser._id}. Added ${newViewedProfileIds.length} profiles.`);
-    }
+    // Note: viewedProfiles system removed - users either like or reject profiles
 
     // Removed manual rate limit increment logic.
     // express-rate-limit with skipFailedRequests: true will handle counting successful (2xx) responses.
