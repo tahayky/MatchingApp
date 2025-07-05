@@ -898,16 +898,6 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
       });
     }
     
-    // Debug liked matches
-    const likedMatches = await Match.find({ user: currentUser._id, action: 'like' }).select('targetUser');
-    if (likedMatches.length > 0) {
-      console.log(`[EXCLUSION DEBUG] Adding ${likedMatches.length} liked matches to exclude list`);
-      likedMatches.forEach(match => {
-        usersToExclude.push(match.targetUser);
-        console.log(`[EXCLUSION DEBUG] Excluded (liked): ${match.targetUser}`);
-      });
-    }
-    
     // Debug liked users (from liked field)
     if (currentUser.liked && currentUser.liked.length > 0) {
       console.log(`[EXCLUSION DEBUG] Adding ${currentUser.liked.length} liked users to exclude list`);
@@ -917,33 +907,10 @@ router.get('/discover', protect, (req: Request, res: Response, next: NextFunctio
       });
     }
     
-    // Debug existing matches
-    const existingMatches = await Match.find({
-        $or: [
-            { user: currentUser._id, targetUser: { $in: usersToExclude }, isMatch: true },
-            { targetUser: currentUser._id, user: { $in: usersToExclude }, isMatch: true }
-        ]
-    }).select('user targetUser');
-    
-    if (existingMatches.length > 0) {
-      console.log(`[EXCLUSION DEBUG] Found ${existingMatches.length} existing matches`);
-    }
-    
-    existingMatches.forEach(match => {
-        if (match.user.toString() !== currentUser._id.toString() && !usersToExclude.find(id => id.equals(match.user))) {
-            usersToExclude.push(match.user);
-            console.log(`[EXCLUSION DEBUG] Excluded (existing match user): ${match.user}`);
-        }
-        if (match.targetUser.toString() !== currentUser._id.toString() && !usersToExclude.find(id => id.equals(match.targetUser))) {
-            usersToExclude.push(match.targetUser);
-            console.log(`[EXCLUSION DEBUG] Excluded (existing match target): ${match.targetUser}`);
-        }
-    });
-
-    // REMOVED: ViewedProfiles exclusion - this was unnecessary and confusing
-    // In a swipe app, users either like or reject - no need for "viewed but no action" tracking
-    // Rejection is already handled by the rejected list above
-    // Likes are already handled by the likedMatches above
+    // REMOVED: Match table exclusions - only use User table fields
+    // - No more liked matches from Match table
+    // - No more existing matches from Match table
+    // Only use: rejected and liked arrays from User model
 
     if (usersToExclude.length > 0) {
       query._id = {
