@@ -251,10 +251,6 @@ export default function LikesScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <ThemedView style={styles.header}>
-        <ThemedText type="title">Likes You've Received</ThemedText>
-      </ThemedView>
-      
       {loading ? (
         <ThemedView style={[styles.container, styles.centered]}>
           <ActivityIndicator size="large" />

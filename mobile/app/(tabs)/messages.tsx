@@ -172,10 +172,6 @@ export default function MessagesScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <ThemedView style={styles.header}>
-        <ThemedText type="title">Messages</ThemedText>
-      </ThemedView>
-      
       {loading ? (
         <ThemedView style={[styles.container, styles.centered]}>
           <ActivityIndicator size="large" />

@@ -328,11 +328,6 @@ export default function HomeScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <ThemedView style={styles.header}>
-        <ThemedText type="title">Find Your Match</ThemedText>
-        <ThemedText>{matches.length} matches so far</ThemedText>
-      </ThemedView>
-      
       {/* Ana content alanı */}
       <ThemedView style={styles.mainContent}>
         {profiles.length === 0 && !loading && allProfilesLoaded && (

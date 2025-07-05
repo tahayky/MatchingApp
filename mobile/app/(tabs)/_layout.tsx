@@ -66,7 +66,21 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
+        headerShown: true,
+        headerStyle: {
+          backgroundColor: '#ffffff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
+          elevation: 5,
+        },
+        headerTitleStyle: {
+          fontSize: 24,
+          fontWeight: 'bold',
+          color: '#000000',
+        },
+        headerTitleAlign: 'center',
         tabBarButton: HapticTab,
         tabBarBackground: TabBarBackground,
         tabBarShowLabel: false, // Remove tab labels, show only icons
@@ -90,28 +104,28 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Discovery',
+          title: '💫 Discover',
           tabBarIcon: ({ color }) => <GenieLampIcon size={44} color={color} />,
         }}
       />
       <Tabs.Screen
         name="messages"
         options={{
-          title: 'Messages',
+          title: '💬 Messages',
           tabBarIcon: ({ color }) => <IconSymbol size={44} name="message.fill" color={color} />,
         }}
       />
       <Tabs.Screen
         name="likes"
         options={{
-          title: 'Likes',
+          title: '❤️ Likes',
           tabBarIcon: ({ color }) => <IconSymbol size={44} name="heart.fill" color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
+          title: '👤 Profile',
           tabBarIcon: ({ color }) => <IconSymbol size={44} name="person.fill" color={color} />,
         }}
       />

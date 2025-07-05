@@ -31,21 +31,25 @@ export function CardDeck({ profiles, onSwipeLeft, onSwipeRight, onDeckEmpty, lik
   // onDeckEmpty will be called directly after a swipe if the deck becomes empty.
 
   const handleSwipe = (profile: ProfileData, swipeDirection: 'left' | 'right') => {
-    // Call the appropriate prop function passed from the parent
-    if (swipeDirection === 'left' && onSwipeLeft) {
-      onSwipeLeft(profile);
-    } else if (swipeDirection === 'right' && onSwipeRight) {
-      console.log('--- CardDeck: Detected right swipe, calling onSwipeRight prop for:', profile.id);
-      onSwipeRight(profile);
-    }
-
-    // Update local state to remove the card
+    // Update local state to remove the card first
     setCurrentProfiles((prevProfiles) => {
       const newProfiles = prevProfiles.filter(p => p.id !== profile.id);
-      if (newProfiles.length === 0) {
-        console.log('CardDeck: Deck is now empty after swipe, calling onDeckEmpty.');
-        onDeckEmpty(); // Call when the current, actively rendered deck becomes empty
-      }
+      
+      // Schedule callbacks for next tick to avoid render loop
+      setTimeout(() => {
+        if (swipeDirection === 'left' && onSwipeLeft) {
+          onSwipeLeft(profile);
+        } else if (swipeDirection === 'right' && onSwipeRight) {
+          console.log('--- CardDeck: Detected right swipe, calling onSwipeRight prop for:', profile.id);
+          onSwipeRight(profile);
+        }
+
+        if (newProfiles.length === 0) {
+          console.log('CardDeck: Deck is now empty after swipe, calling onDeckEmpty.');
+          onDeckEmpty();
+        }
+      }, 0);
+
       return newProfiles;
     });
   };

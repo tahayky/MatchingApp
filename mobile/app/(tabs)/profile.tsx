@@ -136,7 +136,6 @@ export default function ProfileScreen() {
     <ThemedView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <ThemedView style={styles.header}>
-          <ThemedText type="title" style={styles.headerTitle}>My Profile</ThemedText>
           <TouchableOpacity
             style={styles.settingsIcon}
             onPress={() => router.push('/profile/settings')}
